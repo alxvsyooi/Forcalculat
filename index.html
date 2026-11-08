@@ -1,0 +1,343 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Зарплата</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-192.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Зарплата">
+<meta name="theme-color" content="#1f6feb">
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1f6feb; --red:#d93025; --green:#188038; --border:#e2e4e8; }
+  @media (prefers-color-scheme: dark) {
+    :root { --bg:#111317; --card:#1c1f25; --text:#e8eaed; --muted:#9aa0a6; --accent:#4c8dff; --red:#ff6b6b; --green:#4cd07d; --border:#2d313a; }
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,system-ui,Roboto,sans-serif; background:var(--bg); color:var(--text);
+         padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:600px; margin-inline:auto; }
+  h1 { font-size:20px; margin:4px 0 12px; }
+  h2 { font-size:16px; margin:0 0 10px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .weeknav { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+  .weeknav .title { text-align:center; font-weight:600; }
+  .weeknav .sub { font-size:13px; color:var(--muted); font-weight:400; }
+  button { font:inherit; border:none; border-radius:8px; padding:10px 14px; background:var(--accent); color:#fff; cursor:pointer; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--border); }
+  button.del { background:transparent; color:var(--red); padding:6px 8px; }
+  label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
+  input, select { font:inherit; font-size:16px; width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); }
+  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
+  .item { border-top:1px solid var(--border); padding:10px 0; }
+  .item:first-child { border-top:none; padding-top:0; }
+  .muted { color:var(--muted); font-size:13px; }
+  .big { font-size:24px; font-weight:700; }
+  .plus { color:var(--green); } .minus { color:var(--red); }
+  table { width:100%; border-collapse:collapse; font-size:14px; }
+  td, th { padding:6px 4px; text-align:right; border-top:1px solid var(--border); }
+  th { color:var(--muted); font-weight:500; border-top:none; }
+  td:first-child, th:first-child { text-align:left; }
+  .actions { display:flex; gap:8px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<h1>Зарплата</h1>
+
+<div class="card weeknav">
+  <button class="ghost" id="prev">‹</button>
+  <div class="title"><div id="weekTitle"></div><div class="sub" id="payday"></div></div>
+  <button class="ghost" id="next">›</button>
+</div>
+
+<div class="card">
+  <h2>Итого к выплате</h2>
+  <div class="big" id="total">0 ₸</div>
+  <div class="muted" id="totalNote"></div>
+  <table id="byPoint" style="margin-top:10px"></table>
+</div>
+
+<div class="card">
+  <div class="row"><h2>Смены</h2><button id="addShift">+ Смена</button></div>
+  <div id="shifts"></div>
+</div>
+
+<div class="card">
+  <div class="row"><h2>Авансы</h2><button id="addAdv">+ Аванс</button></div>
+  <div id="advances"></div>
+</div>
+
+<div class="card">
+  <div class="row"><h2>Синхронизация</h2><span class="muted" id="syncStatus"></span></div>
+  <div id="syncForm">
+    <label for="syncPass">Пароль (тот же на всех устройствах)</label>
+    <div class="row"><input type="password" id="syncPass" autocomplete="current-password"><button id="syncOn">Включить</button></div>
+  </div>
+  <div id="syncOnBox" hidden>
+    <div class="actions"><button class="ghost" id="syncNow">Синхронизировать</button><button class="ghost" id="syncOff">Отключить</button></div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>Резервная копия</h2>
+  <div class="muted" style="margin-bottom:8px">Данные хранятся на этом устройстве. Чтобы перенести на другое — сохрани файл и загрузи его там.</div>
+  <div class="actions">
+    <button class="ghost" id="export">Сохранить файл</button>
+    <button class="ghost" id="importBtn">Загрузить файл</button>
+    <input type="file" id="importFile" accept=".json,application/json" hidden>
+  </div>
+</div>
+
+<script>
+const POINTS = ["БЦА", "ДАМУ", "АРУЖАН", "ЖИБЕК", "ТУРАН"];
+const PERCENT = 0.20;
+const MIN_SALES = 35000;
+const MIN_PAY = 7000;
+const KEEP_WEEKS = 5;          // текущая + 4 прошлые
+const KEY = "salary-data-v1";
+const DAYS = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+
+// ---------- даты ----------
+function iso(d) { return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
+function parse(s) { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
+function addDays(s, n) { const d = parse(s); d.setDate(d.getDate()+n); return iso(d); }
+function mondayOf(s) { const d = parse(s); const wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return iso(d); }
+function fmtDate(s) { const d = parse(s); return DAYS[d.getDay()] + " " + String(d.getDate()).padStart(2,"0") + "." + String(d.getMonth()+1).padStart(2,"0"); }
+function money(n) { return Math.round(n).toLocaleString("ru-RU") + " ₸"; }
+
+// ---------- хранилище ----------
+let data = { weeks: {} };
+try { data = JSON.parse(localStorage.getItem(KEY)) || data; } catch (e) {}
+if (!data.weeks) data.weeks = {};
+
+function save(changed) {
+  if (changed !== false) W().updatedAt = Date.now();
+  // удаляем недели старше 4 прошлых
+  const oldest = addDays(mondayOf(iso(new Date())), -7*(KEEP_WEEKS-1));
+  for (const k of Object.keys(data.weeks)) if (k < oldest) delete data.weeks[k];
+  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { alert("Не удалось сохранить данные"); }
+  if (changed !== false) scheduleSync();
+}
+
+let week = mondayOf(iso(new Date()));
+function W() { return data.weeks[week] || (data.weeks[week] = { shifts: [], advances: [] }); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+
+// ---------- расчёт ----------
+function shiftPay(s) {
+  if (s.sales === null || s.sales === "" || s.sales === undefined) return MIN_PAY; // продажи ещё не внесены
+  const p = Number(s.sales) * PERCENT;
+  return Number(s.sales) < MIN_SALES ? MIN_PAY : p;
+}
+
+// ---------- отрисовка ----------
+function pointSelect(val, onChange) {
+  const sel = document.createElement("select");
+  for (const p of POINTS) { const o = document.createElement("option"); o.value = o.textContent = p; sel.appendChild(o); }
+  sel.value = val; sel.onchange = () => onChange(sel.value);
+  return sel;
+}
+function field(labelText, el) { const w = document.createElement("div"); const l = document.createElement("label"); l.textContent = labelText; w.append(l, el); return w; }
+function numInput(val, placeholder, onChange) {
+  const i = document.createElement("input"); i.type = "number"; i.inputMode = "numeric"; i.min = "0";
+  i.placeholder = placeholder; i.value = (val === null || val === undefined || val === 0 && placeholder !== "0") ? "" : val;
+  i.oninput = () => onChange(i.value === "" ? null : Number(i.value));
+  return i;
+}
+function dateInput(val, onChange) {
+  const i = document.createElement("input"); i.type = "date"; i.value = val;
+  i.min = week; i.max = addDays(week, 6);
+  i.onchange = () => { if (i.value) onChange(i.value); };
+  return i;
+}
+
+function render() {
+  const w = W();
+  document.getElementById("weekTitle").textContent = fmtDate(week).slice(3) + " – " + fmtDate(addDays(week,6)).slice(3);
+  document.getElementById("payday").textContent = "Выплата: пн " + fmtDate(addDays(week,7)).slice(3);
+  document.getElementById("prev").disabled = week <= addDays(mondayOf(iso(new Date())), -7*(KEEP_WEEKS-1));
+
+  // смены
+  const box = document.getElementById("shifts"); box.innerHTML = "";
+  w.shifts.sort((a,b) => a.date.localeCompare(b.date));
+  if (!w.shifts.length) box.innerHTML = '<div class="muted">Смен нет</div>';
+  for (const s of w.shifts) {
+    const it = document.createElement("div"); it.className = "item";
+    const head = document.createElement("div"); head.className = "row";
+    const pay = document.createElement("div");
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "Удалить";
+    del.onclick = () => { if (confirm("Удалить смену?")) { w.shifts = w.shifts.filter(x => x !== s); save(); render(); } };
+    head.append(pay, del);
+    const g = document.createElement("div"); g.className = "grid"; g.style.marginTop = "8px";
+    const upd = () => {
+      const noSales = s.sales === null || s.sales === undefined;
+      pay.innerHTML = "<b>" + money(shiftPay(s)) + "</b> <span class='muted'>" +
+        (noSales ? "минималка, продажи не внесены" : (s.sales < MIN_SALES ? "минималка" : "20%")) +
+        (s.courier ? " · курьер +" + money(s.courier) : "") + "</span>";
+      renderTotals();
+    };
+    g.append(
+      field("Дата", dateInput(s.date, v => { s.date = v; save(); render(); })),
+      field("Точка", pointSelect(s.point, v => { s.point = v; save(); renderTotals(); })),
+      field("Продажи, ₸", numInput(s.sales, "не внесено", v => { s.sales = v; save(); upd(); })),
+      field("Курьер (платил сам), ₸", numInput(s.courier || null, "0", v => { s.courier = v || 0; save(); upd(); }))
+    );
+    it.append(head, g); box.appendChild(it); upd();
+  }
+
+  // авансы
+  const ab = document.getElementById("advances"); ab.innerHTML = "";
+  if (!w.advances.length) ab.innerHTML = '<div class="muted">Авансов нет</div>';
+  for (const a of w.advances) {
+    const it = document.createElement("div"); it.className = "item";
+    const head = document.createElement("div"); head.className = "row";
+    const t = document.createElement("div"); t.innerHTML = "<b class='minus'>−" + money(a.amount || 0) + "</b>";
+    const del = document.createElement("button"); del.className = "del"; del.textContent = "Удалить";
+    del.onclick = () => { if (confirm("Удалить аванс?")) { w.advances = w.advances.filter(x => x !== a); save(); render(); } };
+    head.append(t, del);
+    const g = document.createElement("div"); g.className = "grid"; g.style.marginTop = "8px";
+    g.append(
+      field("Дата", dateInput(a.date, v => { a.date = v; save(); })),
+      field("Точка (кто выдал)", pointSelect(a.point, v => { a.point = v; save(); renderTotals(); })),
+      field("Сумма, ₸", numInput(a.amount || null, "0", v => { a.amount = v || 0; t.innerHTML = "<b class='minus'>−" + money(a.amount) + "</b>"; save(); renderTotals(); }))
+    );
+    it.append(head, g); ab.appendChild(it);
+  }
+  renderTotals();
+}
+
+function renderTotals() {
+  const w = W();
+  const by = {};
+  const get = p => by[p] || (by[p] = { pay:0, courier:0, adv:0 });
+  for (const s of w.shifts) { const r = get(s.point); r.pay += shiftPay(s); r.courier += Number(s.courier) || 0; }
+  for (const a of w.advances) get(a.point).adv += Number(a.amount) || 0;
+  let total = 0, rows = "";
+  for (const p of POINTS) if (by[p]) {
+    const r = by[p], sum = r.pay + r.courier - r.adv; total += sum;
+    rows += `<tr><td>${p}</td><td>${money(r.pay)}</td><td class="plus">${r.courier ? "+"+money(r.courier) : "—"}</td><td class="minus">${r.adv ? "−"+money(r.adv) : "—"}</td><td><b>${money(sum)}</b></td></tr>`;
+  }
+  document.getElementById("byPoint").innerHTML = rows ? "<tr><th>Точка</th><th>ЗП</th><th>Курьер</th><th>Аванс</th><th>Итого</th></tr>" + rows : "";
+  document.getElementById("total").textContent = money(total);
+  const pending = w.shifts.filter(s => s.sales === null || s.sales === undefined).length;
+  document.getElementById("totalNote").textContent = pending ? `Без продаж: ${pending} смен(ы), посчитаны по минималке` : "";
+}
+
+// ---------- кнопки ----------
+function lastPoint() {
+  const all = Object.values(data.weeks).flatMap(w => w.shifts).sort((a,b) => b.date.localeCompare(a.date));
+  return all.length ? all[0].point : POINTS[0];
+}
+function defaultDate() {
+  const today = iso(new Date());
+  if (today >= week && today <= addDays(week,6)) return today;
+  return week;
+}
+document.getElementById("addShift").onclick = () => {
+  const w = W();
+  let d = defaultDate();
+  const used = new Set(w.shifts.map(s => s.date));
+  if (used.has(d)) for (let i = 0; i < 7; i++) { const c = addDays(week, i); if (!used.has(c)) { d = c; break; } }
+  w.shifts.push({ id: uid(), date: d, point: lastPoint(), sales: null, courier: 0 });
+  save(); render();
+};
+document.getElementById("addAdv").onclick = () => {
+  W().advances.push({ id: uid(), date: defaultDate(), point: lastPoint(), amount: 0 });
+  save(); render();
+};
+document.getElementById("prev").onclick = () => { week = addDays(week, -7); render(); };
+document.getElementById("next").onclick = () => { week = addDays(week, 7); render(); };
+
+document.getElementById("export").onclick = () => {
+  const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
+  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
+  a.download = "zarplata-" + iso(new Date()) + ".json"; a.click();
+};
+document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
+document.getElementById("importFile").onchange = e => {
+  const f = e.target.files[0]; if (!f) return;
+  f.text().then(t => {
+    try { const d = JSON.parse(t); if (!d.weeks) throw 0;
+      if (confirm("Заменить текущие данные данными из файла?")) {
+        data = d; for (const w of Object.values(data.weeks)) w.updatedAt = Date.now();
+        save(false); scheduleSync(); render(); }
+    } catch (err) { alert("Файл не подходит"); }
+  });
+  e.target.value = "";
+};
+
+// ---------- синхронизация ----------
+const SYNC_KEY = "salary-sync-v1";
+let sync = {};
+try { sync = JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) {}
+const canSync = location.protocol.startsWith("http");
+let syncTimer = null, syncing = false, syncAgain = false;
+
+function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) {} }
+function setStatus(t) { document.getElementById("syncStatus").textContent = t; }
+function scheduleSync() { if (!sync.password) return; clearTimeout(syncTimer); syncTimer = setTimeout(doSync, 800); }
+
+// По каждой неделе берём ту версию, что изменена позже
+function merge(local, remote) {
+  const out = { weeks: {} };
+  const keys = new Set([...Object.keys(local.weeks), ...Object.keys(remote.weeks || {})]);
+  for (const k of keys) {
+    const a = local.weeks[k], b = (remote.weeks || {})[k];
+    const pick = !b ? a : !a ? b : ((a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b);
+    if (pick !== a && JSON.stringify(pick) !== JSON.stringify(a)) out.fromServer = true;
+    out.weeks[k] = pick;
+  }
+  return out;
+}
+async function api(method, body) {
+  const r = await fetch("api/data", { method, headers: { "Content-Type": "application/json", "x-password": sync.password },
+    body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+  if (r.status === 401) throw new Error("auth");
+  if (r.status !== 200 && r.status !== 409) throw new Error("http " + r.status);
+  return { status: r.status, json: await r.json() };
+}
+async function doSync() {
+  if (!sync.password || !canSync) return;
+  if (syncing) { syncAgain = true; return; }
+  syncing = true; setStatus("синхронизация…");
+  try {
+    let server = (await api("GET")).json, fromServer = false;
+    for (let i = 0; i < 5; i++) {
+      const merged = merge(data, server.data);
+      if (merged.fromServer) fromServer = true;
+      delete merged.fromServer;
+      data = merged; save(false);
+      if (JSON.stringify(merged) === JSON.stringify(server.data)) break;
+      const r = await api("PUT", { baseRev: server.rev, data: merged });
+      if (r.status === 200) break;
+      server = r.json; // конфликт — сливаем ещё раз
+    }
+    if (fromServer) render(); // перерисовываем, только если пришли изменения с другого устройства
+    setStatus("✓ " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
+  } catch (e) {
+    if (e.message === "auth") { setStatus("неверный пароль"); sync.password = ""; saveSync(); showSync(); }
+    else setStatus("нет связи, данные сохранены на устройстве");
+  }
+  syncing = false;
+  if (syncAgain) { syncAgain = false; doSync(); }
+}
+function showSync() {
+  document.getElementById("syncForm").hidden = !!sync.password;
+  document.getElementById("syncOnBox").hidden = !sync.password;
+  if (!canSync) setStatus("доступно только на сайте");
+}
+document.getElementById("syncOn").onclick = () => {
+  const v = document.getElementById("syncPass").value.trim(); if (!v) return;
+  sync.password = v; saveSync(); showSync(); doSync();
+};
+document.getElementById("syncOff").onclick = () => { sync.password = ""; saveSync(); showSync(); setStatus("выключена"); };
+document.getElementById("syncNow").onclick = doSync;
+document.addEventListener("visibilitychange", () => { if (!document.hidden) doSync(); });
+window.addEventListener("online", doSync);
+
+save(false); render(); showSync(); doSync();
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+</script>
+</body>
+</html>
