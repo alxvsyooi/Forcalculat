@@ -69,6 +69,17 @@
 </div>
 
 <div class="card">
+  <div class="row"><h2>Синхронизация</h2><span class="muted" id="syncStatus"></span></div>
+  <div id="syncForm">
+    <label for="syncPass">Пароль (тот же на всех устройствах)</label>
+    <div class="row"><input type="password" id="syncPass" autocomplete="current-password"><button id="syncOn">Включить</button></div>
+  </div>
+  <div id="syncOnBox" hidden>
+    <div class="actions"><button class="ghost" id="syncNow">Синхронизировать</button><button class="ghost" id="syncOff">Отключить</button></div>
+  </div>
+</div>
+
+<div class="card">
   <h2>Резервная копия</h2>
   <div class="muted" style="margin-bottom:8px">Данные хранятся на этом устройстве. Чтобы перенести на другое — сохрани файл и загрузи его там.</div>
   <div class="actions">
@@ -100,11 +111,13 @@ let data = { weeks: {} };
 try { data = JSON.parse(localStorage.getItem(KEY)) || data; } catch (e) {}
 if (!data.weeks) data.weeks = {};
 
-function save() {
+function save(changed) {
+  if (changed !== false) W().updatedAt = Date.now();
   // удаляем недели старше 4 прошлых
   const oldest = addDays(mondayOf(iso(new Date())), -7*(KEEP_WEEKS-1));
   for (const k of Object.keys(data.weeks)) if (k < oldest) delete data.weeks[k];
   try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { alert("Не удалось сохранить данные"); }
+  if (changed !== false) scheduleSync();
 }
 
 let week = mondayOf(iso(new Date()));
@@ -246,13 +259,84 @@ document.getElementById("importFile").onchange = e => {
   const f = e.target.files[0]; if (!f) return;
   f.text().then(t => {
     try { const d = JSON.parse(t); if (!d.weeks) throw 0;
-      if (confirm("Заменить текущие данные данными из файла?")) { data = d; save(); render(); }
+      if (confirm("Заменить текущие данные данными из файла?")) {
+        data = d; for (const w of Object.values(data.weeks)) w.updatedAt = Date.now();
+        save(false); scheduleSync(); render(); }
     } catch (err) { alert("Файл не подходит"); }
   });
   e.target.value = "";
 };
 
-save(); render();
+// ---------- синхронизация ----------
+const SYNC_KEY = "salary-sync-v1";
+let sync = {};
+try { sync = JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) {}
+const canSync = location.protocol.startsWith("http");
+let syncTimer = null, syncing = false, syncAgain = false;
+
+function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) {} }
+function setStatus(t) { document.getElementById("syncStatus").textContent = t; }
+function scheduleSync() { if (!sync.password) return; clearTimeout(syncTimer); syncTimer = setTimeout(doSync, 800); }
+
+// По каждой неделе берём ту версию, что изменена позже
+function merge(local, remote) {
+  const out = { weeks: {} };
+  const keys = new Set([...Object.keys(local.weeks), ...Object.keys(remote.weeks || {})]);
+  for (const k of keys) {
+    const a = local.weeks[k], b = (remote.weeks || {})[k];
+    const pick = !b ? a : !a ? b : ((a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b);
+    if (pick !== a && JSON.stringify(pick) !== JSON.stringify(a)) out.fromServer = true;
+    out.weeks[k] = pick;
+  }
+  return out;
+}
+async function api(method, body) {
+  const r = await fetch("api/data", { method, headers: { "Content-Type": "application/json", "x-password": sync.password },
+    body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+  if (r.status === 401) throw new Error("auth");
+  if (r.status !== 200 && r.status !== 409) throw new Error("http " + r.status);
+  return { status: r.status, json: await r.json() };
+}
+async function doSync() {
+  if (!sync.password || !canSync) return;
+  if (syncing) { syncAgain = true; return; }
+  syncing = true; setStatus("синхронизация…");
+  try {
+    let server = (await api("GET")).json, fromServer = false;
+    for (let i = 0; i < 5; i++) {
+      const merged = merge(data, server.data);
+      if (merged.fromServer) fromServer = true;
+      delete merged.fromServer;
+      data = merged; save(false);
+      if (JSON.stringify(merged) === JSON.stringify(server.data)) break;
+      const r = await api("PUT", { baseRev: server.rev, data: merged });
+      if (r.status === 200) break;
+      server = r.json; // конфликт — сливаем ещё раз
+    }
+    if (fromServer) render(); // перерисовываем, только если пришли изменения с другого устройства
+    setStatus("✓ " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
+  } catch (e) {
+    if (e.message === "auth") { setStatus("неверный пароль"); sync.password = ""; saveSync(); showSync(); }
+    else setStatus("нет связи, данные сохранены на устройстве");
+  }
+  syncing = false;
+  if (syncAgain) { syncAgain = false; doSync(); }
+}
+function showSync() {
+  document.getElementById("syncForm").hidden = !!sync.password;
+  document.getElementById("syncOnBox").hidden = !sync.password;
+  if (!canSync) setStatus("доступно только на сайте");
+}
+document.getElementById("syncOn").onclick = () => {
+  const v = document.getElementById("syncPass").value.trim(); if (!v) return;
+  sync.password = v; saveSync(); showSync(); doSync();
+};
+document.getElementById("syncOff").onclick = () => { sync.password = ""; saveSync(); showSync(); setStatus("выключена"); };
+document.getElementById("syncNow").onclick = doSync;
+document.addEventListener("visibilitychange", () => { if (!document.hidden) doSync(); });
+window.addEventListener("online", doSync);
+
+save(false); render(); showSync(); doSync();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
