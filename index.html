@@ -271,7 +271,7 @@ function buildReport() {
       const v = shiftPay(s); pay += v; courier += Number(s.courier) || 0;
       const noSales = s.sales === null || s.sales === undefined;
       lines.push(fmtDate(s.date) + " — " + (noSales ? "продажи не внесены" : "продажи " + n(s.sales)) +
-        " → " + n(v) + (noSales || s.sales < MIN_SALES ? " (мин.)" : ""));
+        " → " + n(v));
     }
     for (const a of advs) adv += Number(a.amount) || 0;
     if (courier) lines.push("Курьер: +" + n(courier));
