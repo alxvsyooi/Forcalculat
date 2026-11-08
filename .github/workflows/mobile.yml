@@ -1,0 +1,71 @@
+# Сборка приложения: Android (APK) и iPhone (неподписанный IPA для Sideloadly).
+# Запускается при изменениях сайта в main или вручную: Actions → «Сборка приложения» → Run workflow.
+name: Сборка приложения
+
+on:
+  push:
+    branches: [main]
+    paths: [index.html, manifest.json, "icon-*.png", "mobile/**", ".github/workflows/mobile.yml"]
+  workflow_dispatch:
+
+jobs:
+  android:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Подготовка
+        working-directory: mobile
+        run: |
+          npm ci
+          node copy-www.js
+          npx cap add android
+          npx cap sync android
+      - name: Сборка APK
+        working-directory: mobile/android
+        run: ./gradlew assembleDebug --no-daemon
+      - name: Переименовать
+        run: cp mobile/android/app/build/outputs/apk/debug/app-debug.apk Zarplata.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Zarplata-android
+          path: Zarplata.apk
+
+  ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Подготовка
+        working-directory: mobile
+        run: |
+          npm ci
+          node copy-www.js
+          npx cap add ios
+          npx cap sync ios
+          # текст запроса Face ID (без него приложение падает на iPhone с Face ID)
+          /usr/libexec/PlistBuddy -c "Add :NSFaceIDUsageDescription string 'Вход в приложение по Face ID'" ios/App/App/Info.plist
+      - name: Сборка (без подписи)
+        working-directory: mobile/ios/App
+        run: |
+          if [ -d App.xcworkspace ]; then TARGET="-workspace App.xcworkspace"; else TARGET="-project App.xcodeproj"; fi
+          xcodebuild $TARGET -scheme App -configuration Release -sdk iphoneos \
+            -destination 'generic/platform=iOS' -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" build
+      - name: Упаковать в IPA
+        run: |
+          mkdir Payload
+          cp -R mobile/ios/App/build/Build/Products/Release-iphoneos/App.app Payload/
+          zip -qry Zarplata.ipa Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Zarplata-ios
+          path: Zarplata.ipa

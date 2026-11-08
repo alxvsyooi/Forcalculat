@@ -757,6 +757,12 @@ document.getElementById("importFile").onchange = e => {
   e.target.value = "";
 };
 
+// ---------- приложение (APK/IPA) ----------
+// В приложении страница открыта с адреса устройства, поэтому сервер указываем полностью
+const NATIVE = !!(window.Capacitor && Capacitor.isNativePlatform && Capacitor.isNativePlatform());
+const API_BASE = NATIVE ? "https://zarplata-production-0275.up.railway.app/" : "";
+const Bio = NATIVE ? (Capacitor.registerPlugin ? Capacitor.registerPlugin("NativeBiometric") : Capacitor.Plugins.NativeBiometric) : null;
+
 // ---------- синхронизация ----------
 let syncTimer = null, syncing = false, syncAgain = false;
 function setStatus(t) { document.getElementById("syncStatus").textContent = t; }
@@ -782,7 +788,7 @@ function merge(local, remote) {
 async function request(method, url, body, withAuth) {
   const headers = { "Content-Type": "application/json" };
   if (withAuth !== false && auth) headers.Authorization = "Bearer " + auth.token;
-  const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+  const r = await fetch(API_BASE + url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
   let json = {}; try { json = await r.json(); } catch (e) {}
   return { status: r.status, json };
 }
@@ -916,7 +922,10 @@ async function pinHash(pin, salt) {
   const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
   return b64(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: unb64(salt), iterations: 150000, hash: "SHA-256" }, key, 256));
 }
-const faceSupported = () => !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+const faceSupported = () => NATIVE ? !!Bio : !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+async function nativeVerify() {
+  await Bio.verifyIdentity({ reason: "Вход в приложение", title: "Вход", subtitle: "Зарплата", negativeButtonText: "Код" });
+}
 
 let lockMode = "unlock", pinBuf = "", firstPin = "";
 function showLock(mode) {
@@ -972,6 +981,15 @@ document.getElementById("lockLogout").onclick = () => {
 };
 
 async function faceEnable() {
+  if (NATIVE) {
+    try {
+      const a = await Bio.isAvailable();
+      if (!a.isAvailable) { alert("Face ID / отпечаток не настроен на телефоне"); return; }
+      await nativeVerify();
+      const c = lockCfg(); c.cred = "native"; setLockCfg(c); renderAccount();
+    } catch (e) { alert("Не получилось включить: " + (e.message || e)); }
+    return;
+  }
   try {
     const cred = await navigator.credentials.create({ publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
@@ -986,6 +1004,7 @@ async function faceEnable() {
 }
 async function faceUnlock(silent) {
   try {
+    if (NATIVE) { await nativeVerify(); const c = lockCfg(); c.fails = 0; setLockCfg(c); openApp(true); return; }
     await navigator.credentials.get({ publicKey: {
       challenge: crypto.getRandomValues(new Uint8Array(32)),
       allowCredentials: [{ type: "public-key", id: unb64(lockCfg().cred) }],
@@ -1036,7 +1055,7 @@ function openApp(unlocked) {
 }
 try { auth = JSON.parse(sessionStorage.getItem(AUTH_KEY) || localStorage.getItem(AUTH_KEY) || "null"); } catch (e) { auth = null; }
 if (auth && auth.token) { loadLocal(); openApp(); } else { auth = null; setAuthMode("login"); showView("authView"); }
-if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
+if (!NATIVE && "serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
 </html>
