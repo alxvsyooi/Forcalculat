@@ -49,6 +49,8 @@ http.createServer((req, res) => {
         if (!msg || !msg.data || typeof msg.data.weeks !== "object") return send(res, 400, { error: "Нет данных" });
         const cur = load();
         if (msg.baseRev !== cur.rev) return send(res, 409, cur); // кто-то успел записать раньше
+        // старая версия приложения не знает про долги — не даём ей их стереть
+        if (!msg.data.debts && cur.data.debts) msg.data.debts = cur.data.debts;
         const next = { rev: cur.rev + 1, data: msg.data };
         store(next);
         send(res, 200, { rev: next.rev });
