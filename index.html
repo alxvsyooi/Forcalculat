@@ -10,73 +10,134 @@
 <meta name="apple-mobile-web-app-title" content="Зарплата">
 <meta name="theme-color" content="#1f6feb">
 <style>
-  :root { --bg:#f4f5f7; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1f6feb; --red:#d93025; --green:#188038; --border:#e2e4e8; }
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1f6feb; --red:#d93025; --green:#188038; --border:#e2e4e8; --orange:#c26401; }
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#111317; --card:#1c1f25; --text:#e8eaed; --muted:#9aa0a6; --accent:#4c8dff; --red:#ff6b6b; --green:#4cd07d; --border:#2d313a; }
+    :root { --bg:#111317; --card:#1c1f25; --text:#e8eaed; --muted:#9aa0a6; --accent:#4c8dff; --red:#ff6b6b; --green:#4cd07d; --border:#2d313a; --orange:#ffa94d; }
   }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,system-ui,Roboto,sans-serif; background:var(--bg); color:var(--text);
          padding:calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width:600px; margin-inline:auto; }
-  h1 { font-size:20px; margin:4px 0 12px; }
   h2 { font-size:16px; margin:0 0 10px; }
+  h3 { font-size:15px; margin:12px 0 6px; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; }
+  .tabs button { flex:1; background:var(--card); color:var(--text); border:1px solid var(--border); font-weight:600; }
+  .tabs button.on { background:var(--accent); color:#fff; border-color:var(--accent); }
   .weeknav { display:flex; align-items:center; justify-content:space-between; gap:8px; }
   .weeknav .title { text-align:center; font-weight:600; }
   .weeknav .sub { font-size:13px; color:var(--muted); font-weight:400; }
   button { font:inherit; border:none; border-radius:8px; padding:10px 14px; background:var(--accent); color:#fff; cursor:pointer; }
   button.ghost { background:transparent; color:var(--accent); border:1px solid var(--border); }
   button.del { background:transparent; color:var(--red); padding:6px 8px; }
+  button.small { padding:6px 10px; font-size:14px; }
   label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
+  label.check { display:flex; gap:8px; align-items:center; font-size:15px; color:var(--text); margin:4px 0; }
+  label.check input { width:22px; height:22px; flex-shrink:0; }
   input, select { font:inherit; font-size:16px; width:100%; min-width:0; max-width:100%; height:42px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); }
   /* iOS Safari: поле даты иначе шире колонки и налезает на соседнее */
-  input[type=date], input[type=number] { -webkit-appearance:none; appearance:none; display:block; }
+  input[type=date], input[type=number], input[type=text] { -webkit-appearance:none; appearance:none; display:block; }
   input::-webkit-date-and-time-value { text-align:left; }
   .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
   .grid > div { min-width:0; }
+  .grid .full { grid-column:1 / -1; }
   .tablewrap { overflow-x:auto; margin-top:10px; }
   #byPoint td, #byPoint th { white-space:nowrap; }
+  .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
   .row > * { min-width:0; }
   .row > button { flex-shrink:0; }
-  .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
   .item { border-top:1px solid var(--border); padding:10px 0; }
   .item:first-child { border-top:none; padding-top:0; }
   .muted { color:var(--muted); font-size:13px; }
   .big { font-size:24px; font-weight:700; }
-  .plus { color:var(--green); } .minus { color:var(--red); }
+  .plus { color:var(--green); } .minus { color:var(--red); } .warn { color:var(--orange); }
   table { width:100%; border-collapse:collapse; font-size:14px; }
   td, th { padding:6px 4px; text-align:right; border-top:1px solid var(--border); }
   th { color:var(--muted); font-weight:500; border-top:none; }
   td:first-child, th:first-child { text-align:left; }
   .actions { display:flex; gap:8px; flex-wrap:wrap; }
+  .line { display:flex; justify-content:space-between; gap:10px; padding:4px 0; }
+  .line.total { border-top:1px solid var(--border); margin-top:4px; padding-top:8px; font-weight:700; }
+  .bar { height:8px; background:var(--bg); border-radius:4px; overflow:hidden; margin:8px 0 4px; }
+  .bar > div { height:100%; background:var(--green); }
+  .form { border:1px solid var(--accent); border-radius:10px; padding:12px; margin-top:10px; }
+  details { border-top:1px solid var(--border); padding:10px 0; }
+  details:first-of-type { border-top:none; }
+  summary { cursor:pointer; list-style:none; display:flex; justify-content:space-between; gap:10px; font-weight:600; }
+  summary::-webkit-details-marker { display:none; }
+  .done { color:var(--green); }
 </style>
 </head>
 <body>
-<h1>Зарплата</h1>
+<div class="tabs"><button id="tabSalary">Зарплата</button><button id="tabDebts">Долги</button></div>
 
-<div class="card weeknav">
-  <button class="ghost" id="prev">‹</button>
-  <div class="title"><div id="weekTitle"></div><div class="sub" id="payday"></div></div>
-  <button class="ghost" id="next">›</button>
+<!-- ================= ЗАРПЛАТА ================= -->
+<div id="salaryView">
+  <div class="card weeknav">
+    <button class="ghost" id="prev">‹</button>
+    <div class="title"><div id="weekTitle"></div><div class="sub" id="payday"></div></div>
+    <button class="ghost" id="next">›</button>
+  </div>
+
+  <div class="card">
+    <h2>Итого к выплате</h2>
+    <div class="big" id="total">0 ₸</div>
+    <div class="muted" id="totalNote"></div>
+    <div class="tablewrap"><table id="byPoint"></table></div>
+    <div class="actions" style="margin-top:12px"><button id="copyReport">Скопировать отчёт</button></div>
+  </div>
+
+  <div class="card">
+    <h2>Куда уходит зарплата</h2>
+    <div id="spend"></div>
+    <div class="actions" style="margin-top:10px"><button id="payFromWeek">Отдать с этой зарплаты</button></div>
+    <div id="payFromWeekForm"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2>Смены</h2><button id="addShift">+ Смена</button></div>
+    <div id="shifts"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2>Авансы (взял)</h2><button id="addAdv">+ Аванс</button></div>
+    <div class="muted" style="margin-bottom:8px">Аванс становится долгом начальнику точки. Гасится через «Отдать с этой зарплаты» → вычет из ЗП.</div>
+    <div id="advances"></div>
+  </div>
 </div>
 
-<div class="card">
-  <h2>Итого к выплате</h2>
-  <div class="big" id="total">0 ₸</div>
-  <div class="muted" id="totalNote"></div>
-  <div class="tablewrap"><table id="byPoint"></table></div>
-  <div class="actions" style="margin-top:12px"><button id="copyReport">Скопировать отчёт</button></div>
+<!-- ================= ДОЛГИ ================= -->
+<div id="debtsView" hidden>
+  <div class="card">
+    <h2>Осталось отдать</h2>
+    <div class="big" id="debtTotal"></div>
+    <div class="muted" id="debtTotalAlt"></div>
+    <div class="bar"><div id="debtBar"></div></div>
+    <div class="muted" id="debtPaid"></div>
+    <div id="forecast" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Сроки</h2>
+    <div id="dueList"></div>
+  </div>
+
+  <div class="card">
+    <div class="row"><h2>Кому должен</h2><button id="addDebt">+ Долг</button></div>
+    <div id="addDebtForm"></div>
+    <div id="people" style="margin-top:8px"></div>
+  </div>
+
+  <div class="card">
+    <h2>Настройки</h2>
+    <div class="grid">
+      <div><label>Курс ₽, ₸ за 1 ₽</label><input type="number" step="0.01" inputmode="decimal" id="rateRUB"></div>
+      <div><label>Курс $, ₸ за 1 $</label><input type="number" step="0.01" inputmode="decimal" id="rateUSD"></div>
+      <div><label>Еда и дорога в неделю, ₸</label><input type="number" inputmode="numeric" id="foodSet"></div>
+    </div>
+  </div>
 </div>
 
-<div class="card">
-  <div class="row"><h2>Смены</h2><button id="addShift">+ Смена</button></div>
-  <div id="shifts"></div>
-</div>
-
-<div class="card">
-  <div class="row"><h2>Авансы</h2><button id="addAdv">+ Аванс</button></div>
-  <div id="advances"></div>
-</div>
-
+<!-- ================= ОБЩЕЕ ================= -->
 <div class="card">
   <div class="row"><h2>Синхронизация</h2><span class="muted" id="syncStatus"></span></div>
   <div id="syncForm">
@@ -90,7 +151,7 @@
 
 <div class="card">
   <h2>Резервная копия</h2>
-  <div class="muted" style="margin-bottom:8px">Данные хранятся на этом устройстве. Чтобы перенести на другое — сохрани файл и загрузи его там.</div>
+  <div class="muted" style="margin-bottom:8px">Сохранить все данные в файл или загрузить из файла.</div>
   <div class="actions">
     <button class="ghost" id="export">Сохранить файл</button>
     <button class="ghost" id="importBtn">Загрузить файл</button>
@@ -106,79 +167,176 @@ const MIN_PAY = 7000;
 const KEEP_WEEKS = 5;          // текущая + 4 прошлые
 const KEY = "salary-data-v1";
 const DAYS = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
+const CUR = { KZT: "₸", RUB: "₽" };
 
-// ---------- даты ----------
+// ---------- даты и числа ----------
 function iso(d) { return d.getFullYear() + "-" + String(d.getMonth()+1).padStart(2,"0") + "-" + String(d.getDate()).padStart(2,"0"); }
 function parse(s) { const [y,m,d] = s.split("-").map(Number); return new Date(y, m-1, d); }
 function addDays(s, n) { const d = parse(s); d.setDate(d.getDate()+n); return iso(d); }
 function mondayOf(s) { const d = parse(s); const wd = (d.getDay()+6)%7; d.setDate(d.getDate()-wd); return iso(d); }
 function fmtDate(s) { const d = parse(s); return DAYS[d.getDay()] + " " + String(d.getDate()).padStart(2,"0") + "." + String(d.getMonth()+1).padStart(2,"0"); }
-function money(n) { return Math.round(n).toLocaleString("ru-RU") + " ₸"; }
+function dm(s) { return fmtDate(s).slice(3); }
+function n(x) { return Math.round(x).toLocaleString("ru-RU"); }
+function money(x, cur) { return n(x) + " " + CUR[cur || "KZT"]; }
+function today() { return iso(new Date()); }
+function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function weekLabel(k) { return dm(k) + "–" + dm(addDays(k, 6)); }
 
 // ---------- хранилище ----------
 let data = { weeks: {} };
 try { data = JSON.parse(localStorage.getItem(KEY)) || data; } catch (e) {}
 if (!data.weeks) data.weeks = {};
 
-function save(changed) {
-  if (changed !== false) W().updatedAt = Date.now();
-  // удаляем недели старше 4 прошлых
-  const oldest = addDays(mondayOf(iso(new Date())), -7*(KEEP_WEEKS-1));
-  for (const k of Object.keys(data.weeks)) if (k < oldest) delete data.weeks[k];
-  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { alert("Не удалось сохранить данные"); }
-  if (changed !== false) scheduleSync();
+// Начальные долги из таблицы (07.11.2026). updatedAt = 0, чтобы не перезаписать данные с сервера.
+function seedDebts() {
+  const P = (id, name, currency, points) => ({ id, name, currency, points: points || [] });
+  const I = (id, personId, title, amount, due) => ({ id, personId, title, amount, date: "2026-11-07", due });
+  return {
+    updatedAt: 0, migrated: [],
+    rates: { RUB: 5.46, USD: 447.14 }, food: 10000,
+    people: [
+      P("talgat", "Талгат", "KZT", ["БЦА"]),
+      P("nursat", "Нурсат", "KZT", ["ДАМУ", "ТУРАН"]),
+      P("tleu", "Тлеуберди", "KZT", ["ЖИБЕК", "АРУЖАН"]),
+      P("nursultan", "Нурсултан", "KZT"),
+      P("raiym", "Райымбек", "KZT"),
+      P("vinill", "Винилл", "RUB"),
+      P("vadim", "Вадим", "RUB"),
+      P("oleg", "Олег", "RUB"),
+      P("albert", "Альберт", "RUB"),
+    ],
+    items: [
+      I("seed-tleu", "tleu", "Долг", 45000, "2026-11-23"),
+      I("seed-nursat", "nursat", "Долг", 22500, "2026-11-16"),
+      I("seed-nursultan", "nursultan", "Долг", 30000, "2026-11-16"),
+      I("seed-raiym-pc", "raiym", "За компы", 5000, "2026-11-09"),
+      I("seed-raiym-watch", "raiym", "За часы", 30000, "2026-11-16"),
+      I("seed-raiym-flat", "raiym", "Квартира (30к прошлый + 100к этот месяц)", 130000, "2026-12-07"),
+      I("seed-vinill", "vinill", "Долг", 20000, "2026-11-30"),
+      I("seed-vadim", "vadim", "Долг (+4 000 ₽ за ожидание)", 16000, "2026-12-28"),
+      I("seed-oleg", "oleg", "Долг (+3 000 ₽ за ожидание)", 16000, "2027-01-18"),
+      I("seed-albert", "albert", "Долг", 1300, "2027-01-25"),
+    ],
+    payments: [],
+  };
+}
+if (!data.debts) data.debts = seedDebts();
+const D = () => data.debts;
+
+// Старые авансы из недель переносим в долги начальнику (+ вычет в той же неделе, как считалось раньше)
+function migrateAdvances() {
+  const d = D(); if (!d.migrated) d.migrated = [];
+  for (const [k, w] of Object.entries(data.weeks)) {
+    for (const a of (w.advances || [])) {
+      if (d.migrated.includes(a.id)) continue;
+      d.migrated.push(a.id);
+      if (!a.amount) continue;
+      const boss = bossOf(a.point);
+      d.items.push({ id: "adv-" + a.id, personId: boss.id, title: "Аванс", amount: a.amount, date: a.date, due: "", week: k, point: a.point, advance: true });
+      d.payments.push({ id: "pay-adv-" + a.id, personId: boss.id, itemId: "adv-" + a.id, date: addDays(k, 7), amount: a.amount, kzt: a.amount, week: k, deduction: true, point: a.point });
+    }
+  }
 }
 
-let week = mondayOf(iso(new Date()));
-function W() { return data.weeks[week] || (data.weeks[week] = { shifts: [], advances: [] }); }
-function uid() { return Date.now().toString(36) + Math.random().toString(36).slice(2,6); }
+function prune() {
+  const oldest = addDays(mondayOf(today()), -7*(KEEP_WEEKS-1));
+  for (const k of Object.keys(data.weeks)) if (k < oldest) delete data.weeks[k];
+}
+function store() {
+  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { alert("Не удалось сохранить данные"); }
+}
+function save() { W().updatedAt = Date.now(); prune(); store(); scheduleSync(); }       // изменилась неделя
+function saveDebts() { D().updatedAt = Date.now(); store(); scheduleSync(); }           // изменились долги
 
-// ---------- расчёт ----------
+let week = mondayOf(today());
+function W() { return data.weeks[week] || (data.weeks[week] = { shifts: [] }); }
+
+// ---------- расчёт зарплаты ----------
 function shiftPay(s) {
   if (s.sales === null || s.sales === "" || s.sales === undefined) return MIN_PAY; // продажи ещё не внесены
-  const p = Number(s.sales) * PERCENT;
-  return Number(s.sales) < MIN_SALES ? MIN_PAY : p;
+  return Number(s.sales) < MIN_SALES ? MIN_PAY : Number(s.sales) * PERCENT;
 }
 
-// ---------- отрисовка ----------
-function pointSelect(val, onChange) {
-  const sel = document.createElement("select");
-  for (const p of POINTS) { const o = document.createElement("option"); o.value = o.textContent = p; sel.appendChild(o); }
-  sel.value = val; sel.onchange = () => onChange(sel.value);
-  return sel;
+// ---------- расчёт долгов ----------
+function person(id) { return D().people.find(p => p.id === id); }
+function bossOf(point) { return D().people.find(p => (p.points || []).includes(point)); }
+function toKZT(amount, cur) { return cur === "RUB" ? amount * D().rates.RUB : amount; }
+function itemOrder(a, b) { return (a.due || "9999").localeCompare(b.due || "9999") || a.date.localeCompare(b.date); }
+
+// Сколько погашено по каждому долгу: сначала платежи на конкретный долг, остальные — по порядку сроков
+function allocate() {
+  const paid = {};
+  for (const it of D().items) paid[it.id] = 0;
+  for (const p of D().people) {
+    const items = D().items.filter(i => i.personId === p.id).sort(itemOrder);
+    const pays = D().payments.filter(x => x.personId === p.id).sort((a,b) => a.date.localeCompare(b.date));
+    let free = 0;
+    for (const x of pays) {
+      if (x.itemId && paid[x.itemId] !== undefined) paid[x.itemId] += Number(x.amount) || 0;
+      else free += Number(x.amount) || 0;
+    }
+    for (const it of items) {
+      const need = Math.max(0, it.amount - paid[it.id]);
+      const take = Math.min(need, free); paid[it.id] += take; free -= take;
+    }
+    if (free > 0 && items.length) paid[items[items.length-1].id] += free; // переплата
+  }
+  return paid;
 }
-function field(labelText, el) { const w = document.createElement("div"); const l = document.createElement("label"); l.textContent = labelText; w.append(l, el); return w; }
+function personBalance(p, paid) {
+  const items = D().items.filter(i => i.personId === p.id);
+  const total = items.reduce((s, i) => s + i.amount, 0);
+  const left = items.reduce((s, i) => s + Math.max(0, i.amount - paid[i.id]), 0);
+  return { items, total, left };
+}
+function weekPayments(k) { return D().payments.filter(x => x.week === k); }
+
+// ---------- элементы ----------
+function el(tag, props, ...kids) {
+  const e = document.createElement(tag);
+  for (const [k, v] of Object.entries(props || {})) {
+    if (k === "class") e.className = v; else if (k === "html") e.innerHTML = v;
+    else if (k.startsWith("on")) e[k] = v; else e[k] = v;
+  }
+  for (const c of kids) if (c !== null && c !== undefined) e.append(c);
+  return e;
+}
+function field(labelText, input, cls) { return el("div", { class: cls || "" }, el("label", { textContent: labelText }), input); }
+function select(options, val, onChange) {
+  const s = el("select");
+  for (const [v, t] of options) s.append(el("option", { value: v, textContent: t }));
+  if (val !== undefined) s.value = val;
+  if (onChange) s.onchange = () => onChange(s.value);
+  return s;
+}
+function pointSelect(val, onChange) { return select(POINTS.map(p => [p, p]), val, onChange); }
 function numInput(val, placeholder, onChange) {
-  const i = document.createElement("input"); i.type = "number"; i.inputMode = "numeric"; i.min = "0";
-  i.placeholder = placeholder; i.value = (val === null || val === undefined || val === 0 && placeholder !== "0") ? "" : val;
-  i.oninput = () => onChange(i.value === "" ? null : Number(i.value));
+  const i = el("input", { type: "number", inputMode: "numeric", min: "0", placeholder });
+  i.value = (val === null || val === undefined || val === 0) ? "" : val;
+  if (onChange) i.oninput = () => onChange(i.value === "" ? null : Number(i.value));
   return i;
 }
-function dateInput(val, onChange) {
-  const i = document.createElement("input"); i.type = "date"; i.value = val;
-  i.min = week; i.max = addDays(week, 6);
-  i.onchange = () => { if (i.value) onChange(i.value); };
+function dateInput(val, onChange, limitWeek) {
+  const i = el("input", { type: "date", value: val || "" });
+  if (limitWeek) { i.min = week; i.max = addDays(week, 6); }
+  if (onChange) i.onchange = () => onChange(i.value);
   return i;
 }
+function delBtn(question, action) { return el("button", { class: "del", textContent: "Удалить", onclick: () => { if (confirm(question)) action(); } }); }
 
+// ================= ЗАРПЛАТА =================
 function render() {
   const w = W();
-  document.getElementById("weekTitle").textContent = fmtDate(week).slice(3) + " – " + fmtDate(addDays(week,6)).slice(3);
-  document.getElementById("payday").textContent = "Выплата: пн " + fmtDate(addDays(week,7)).slice(3);
-  document.getElementById("prev").disabled = week <= addDays(mondayOf(iso(new Date())), -7*(KEEP_WEEKS-1));
+  document.getElementById("weekTitle").textContent = dm(week) + " – " + dm(addDays(week,6));
+  document.getElementById("payday").textContent = "Выплата: пн " + dm(addDays(week,7));
+  document.getElementById("prev").disabled = week <= addDays(mondayOf(today()), -7*(KEEP_WEEKS-1));
 
   // смены
   const box = document.getElementById("shifts"); box.innerHTML = "";
   w.shifts.sort((a,b) => a.date.localeCompare(b.date));
   if (!w.shifts.length) box.innerHTML = '<div class="muted">Смен нет</div>';
   for (const s of w.shifts) {
-    const it = document.createElement("div"); it.className = "item";
-    const head = document.createElement("div"); head.className = "row";
-    const pay = document.createElement("div");
-    const del = document.createElement("button"); del.className = "del"; del.textContent = "Удалить";
-    del.onclick = () => { if (confirm("Удалить смену?")) { w.shifts = w.shifts.filter(x => x !== s); save(); render(); } };
-    head.append(pay, del);
-    const g = document.createElement("div"); g.className = "grid"; g.style.marginTop = "8px";
+    const pay = el("div");
     const upd = () => {
       const noSales = s.sales === null || s.sales === undefined;
       pay.innerHTML = "<b>" + money(shiftPay(s)) + "</b> <span class='muted'>" +
@@ -186,62 +344,139 @@ function render() {
         (s.courier ? " · курьер +" + money(s.courier) : "") + "</span>";
       renderTotals();
     };
-    g.append(
-      field("Дата", dateInput(s.date, v => { s.date = v; save(); render(); })),
+    const g = el("div", { class: "grid" },
+      field("Дата", dateInput(s.date, v => { if (v) { s.date = v; save(); render(); } }, true)),
       field("Точка", pointSelect(s.point, v => { s.point = v; save(); renderTotals(); })),
       field("Продажи, ₸", numInput(s.sales, "не внесено", v => { s.sales = v; save(); upd(); })),
-      field("Курьер (платил сам), ₸", numInput(s.courier || null, "0", v => { s.courier = v || 0; save(); upd(); }))
+      field("Курьер (платил сам), ₸", numInput(s.courier, "0", v => { s.courier = v || 0; save(); upd(); }))
     );
-    it.append(head, g); box.appendChild(it); upd();
+    g.style.marginTop = "8px";
+    box.append(el("div", { class: "item" },
+      el("div", { class: "row" }, pay, delBtn("Удалить смену?", () => { w.shifts = w.shifts.filter(x => x !== s); save(); render(); })), g));
+    upd();
   }
 
-  // авансы
+  // авансы этой недели (хранятся в долгах)
   const ab = document.getElementById("advances"); ab.innerHTML = "";
-  if (!w.advances.length) ab.innerHTML = '<div class="muted">Авансов нет</div>';
-  for (const a of w.advances) {
-    const it = document.createElement("div"); it.className = "item";
-    const head = document.createElement("div"); head.className = "row";
-    const t = document.createElement("div"); t.innerHTML = "<b class='minus'>−" + money(a.amount || 0) + "</b>";
-    const del = document.createElement("button"); del.className = "del"; del.textContent = "Удалить";
-    del.onclick = () => { if (confirm("Удалить аванс?")) { w.advances = w.advances.filter(x => x !== a); save(); render(); } };
-    head.append(t, del);
-    const g = document.createElement("div"); g.className = "grid"; g.style.marginTop = "8px";
-    g.append(
-      field("Дата", dateInput(a.date, v => { a.date = v; save(); })),
-      field("Точка (кто выдал)", pointSelect(a.point, v => { a.point = v; save(); renderTotals(); })),
-      field("Сумма, ₸", numInput(a.amount || null, "0", v => { a.amount = v || 0; t.innerHTML = "<b class='minus'>−" + money(a.amount) + "</b>"; save(); renderTotals(); }))
+  const advs = D().items.filter(i => i.advance && i.week === week);
+  if (!advs.length) ab.innerHTML = '<div class="muted">Авансов нет</div>';
+  for (const a of advs) {
+    const head = el("div", { html: "<b>" + money(a.amount || 0) + "</b> <span class='muted'>долг: " + (person(a.personId) || {}).name + "</span>" });
+    const g = el("div", { class: "grid" },
+      field("Дата", dateInput(a.date, v => { if (v) { a.date = v; saveDebts(); } }, true)),
+      field("Точка (кто выдал)", pointSelect(a.point, v => { a.point = v; a.personId = bossOf(v).id; saveDebts(); render(); })),
+      field("Сумма, ₸", numInput(a.amount, "0", v => { a.amount = v || 0; head.querySelector("b").textContent = money(a.amount); saveDebts(); renderTotals(); }))
     );
-    it.append(head, g); ab.appendChild(it);
+    g.style.marginTop = "8px";
+    ab.append(el("div", { class: "item" },
+      el("div", { class: "row" }, head, delBtn("Удалить аванс?", () => { D().items = D().items.filter(x => x !== a); saveDebts(); render(); })), g));
   }
   renderTotals();
 }
 
-function renderTotals() {
-  const w = W();
+function weekSummary(k) {
+  const w = data.weeks[k] || { shifts: [] };
   const by = {};
-  const get = p => by[p] || (by[p] = { pay:0, courier:0, adv:0 });
-  for (const s of w.shifts) { const r = get(s.point); r.pay += shiftPay(s); r.courier += Number(s.courier) || 0; }
-  for (const a of w.advances) get(a.point).adv += Number(a.amount) || 0;
-  let total = 0, rows = "";
-  for (const p of POINTS) if (by[p]) {
-    const r = by[p], sum = r.pay + r.courier - r.adv; total += sum;
-    rows += `<tr><td>${p}</td><td>${money(r.pay)}</td><td class="plus">${r.courier ? "+"+money(r.courier) : "—"}</td><td class="minus">${r.adv ? "−"+money(r.adv) : "—"}</td><td><b>${money(sum)}</b></td></tr>`;
-  }
-  document.getElementById("byPoint").innerHTML = rows ? "<tr><th>Точка</th><th>ЗП</th><th>Курьер</th><th>Аванс</th><th>Итого</th></tr>" + rows : "";
-  document.getElementById("total").textContent = money(total);
-  const pending = w.shifts.filter(s => s.sales === null || s.sales === undefined).length;
-  document.getElementById("totalNote").textContent = pending ? `Без продаж: ${pending} смен(ы), посчитаны по минималке` : "";
+  const get = p => by[p] || (by[p] = { pay: 0, courier: 0, ded: 0, shifts: [] });
+  for (const s of w.shifts) { const r = get(s.point); r.pay += shiftPay(s); r.courier += Number(s.courier) || 0; r.shifts.push(s); }
+  const pays = weekPayments(k);
+  for (const x of pays) if (x.deduction) get(x.point).ded += Number(x.kzt) || 0;
+  let pay = 0, courier = 0, ded = 0;
+  for (const r of Object.values(by)) { pay += r.pay; courier += r.courier; ded += r.ded; }
+  const other = pays.filter(x => !x.deduction);
+  const spent = other.reduce((s, x) => s + (Number(x.kzt) || 0), 0);
+  const payout = pay + courier - ded;
+  return { by, pay, courier, ded, payout, other, spent, food: D().food || 0, left: payout - (D().food || 0) - spent };
 }
 
-// ---------- кнопки ----------
+function renderTotals() {
+  const S = weekSummary(week);
+  let rows = "";
+  for (const p of POINTS) if (S.by[p]) {
+    const r = S.by[p];
+    rows += `<tr><td>${p}</td><td>${money(r.pay)}</td><td class="plus">${r.courier ? "+"+money(r.courier) : "—"}</td><td class="minus">${r.ded ? "−"+money(r.ded) : "—"}</td><td><b>${money(r.pay + r.courier - r.ded)}</b></td></tr>`;
+  }
+  document.getElementById("byPoint").innerHTML = rows ? "<tr><th>Точка</th><th>ЗП</th><th>Курьер</th><th>Вычет</th><th>Итого</th></tr>" + rows : "";
+  document.getElementById("total").textContent = money(S.payout);
+  const pending = W().shifts.filter(s => s.sales === null || s.sales === undefined).length;
+  document.getElementById("totalNote").textContent = pending ? `Без продаж: ${pending} смен(ы), посчитаны по минималке` : "";
+
+  // куда уходит зарплата
+  const sp = document.getElementById("spend"); sp.innerHTML = "";
+  const line = (a, b, cls) => el("div", { class: "line " + (cls || "") }, el("span", { textContent: a }), el("span", { textContent: b }));
+  sp.append(line("К выплате", money(S.payout)));
+  sp.append(line("Еда и дорога", "−" + money(S.food)));
+  for (const x of S.other) {
+    const p = person(x.personId) || { name: "?" };
+    const txt = p.name + (p.currency === "RUB" ? ` (${money(x.amount, "RUB")})` : "");
+    const row = el("div", { class: "line" }, el("span", { textContent: txt }),
+      el("span", {}, "−" + money(x.kzt), el("button", { class: "del small", textContent: "✕", onclick: () => {
+        if (confirm("Удалить платёж?")) { D().payments = D().payments.filter(y => y !== x); saveDebts(); render(); renderDebts(); } } })));
+    sp.append(row);
+  }
+  for (const x of weekPayments(week).filter(x => x.deduction)) {
+    const p = person(x.personId) || { name: "?" };
+    sp.append(el("div", { class: "line muted" }, el("span", { textContent: "Вычет " + p.name + " (" + x.point + ") — уже в «к выплате»" }),
+      el("span", {}, money(x.kzt), el("button", { class: "del small", textContent: "✕", onclick: () => {
+        if (confirm("Удалить вычет?")) { D().payments = D().payments.filter(y => y !== x); saveDebts(); render(); renderDebts(); } } }))));
+  }
+  sp.append(line("Остаток на руках", money(S.left), "total" + (S.left < 0 ? " minus" : "")));
+}
+
+// ---------- отчёт начальству ----------
+function extrasText(courier, adv) {
+  return [adv ? "аванса" : "", courier ? "курьера" : ""].filter(Boolean).join(" и ");
+}
+function buildReport() {
+  const S = weekSummary(week), paid = allocate();
+  const lines = ["Отчёт за " + dm(week) + " – " + dm(addDays(week,6))];
+  const bossDone = new Set();
+  for (const p of POINTS) {
+    const r = S.by[p];
+    const advs = D().items.filter(i => i.advance && i.week === week && i.point === p);
+    if (!r && !advs.length) continue;
+    lines.push("", p + ":");
+    const R = r || { pay: 0, courier: 0, ded: 0, shifts: [] };
+    for (const s of R.shifts.sort((a,b) => a.date.localeCompare(b.date))) {
+      const noSales = s.sales === null || s.sales === undefined;
+      lines.push(fmtDate(s.date) + " — " + (noSales ? "не внесено" : n(s.sales)) + " → " + n(shiftPay(s)));
+    }
+    lines.push("Итого " + p + ": " + n(R.pay) + " ₸");
+    if (R.courier || R.ded) {
+      if (R.courier) lines.push("Курьер: +" + n(R.courier));
+      if (R.ded) lines.push("Аванс: −" + n(R.ded));
+      lines.push("Итого " + p + " с учётом " + extrasText(R.courier, R.ded) + ": " + n(R.pay + R.courier - R.ded) + " ₸");
+    }
+    for (const a of advs) lines.push("Взял аванс " + dm(a.date) + ": " + n(a.amount) + " ₸");
+    const boss = bossOf(p);
+    if (boss && !bossDone.has(boss.id)) {
+      bossDone.add(boss.id);
+      const b = personBalance(boss, paid);
+      if (b.total) lines.push("Долг (" + boss.name + "): осталось " + n(b.left) + " ₸");
+    }
+  }
+  lines.push("", "Всего: " + n(S.pay) + " ₸");
+  if (S.courier || S.ded) lines.push("Всего к выплате с учётом " + extrasText(S.courier, S.ded) + ": " + n(S.payout) + " ₸");
+  return lines.join("\n");
+}
+document.getElementById("copyReport").onclick = async () => {
+  const text = buildReport(), btn = document.getElementById("copyReport");
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const t = el("textarea", { value: text }); document.body.append(t);
+    t.select(); document.execCommand("copy"); t.remove();
+  }
+  btn.textContent = "Скопировано ✓"; setTimeout(() => btn.textContent = "Скопировать отчёт", 1500);
+};
+
+// ---------- кнопки зарплаты ----------
 function lastPoint() {
   const all = Object.values(data.weeks).flatMap(w => w.shifts).sort((a,b) => b.date.localeCompare(a.date));
   return all.length ? all[0].point : POINTS[0];
 }
 function defaultDate() {
-  const today = iso(new Date());
-  if (today >= week && today <= addDays(week,6)) return today;
-  return week;
+  const t = today();
+  return (t >= week && t <= addDays(week,6)) ? t : week;
 }
 document.getElementById("addShift").onclick = () => {
   const w = W();
@@ -252,63 +487,225 @@ document.getElementById("addShift").onclick = () => {
   save(); render();
 };
 document.getElementById("addAdv").onclick = () => {
-  W().advances.push({ id: uid(), date: defaultDate(), point: lastPoint(), amount: 0 });
-  save(); render();
+  const point = lastPoint();
+  D().items.push({ id: uid(), personId: bossOf(point).id, title: "Аванс", amount: 0, date: defaultDate(), due: "", week, point, advance: true });
+  saveDebts(); render();
 };
-// ---------- отчёт ----------
-function n(x) { return Math.round(x).toLocaleString("ru-RU"); }
-function extrasText(courier, adv) {
-  return [adv ? "аванса" : "", courier ? "курьера" : ""].filter(Boolean).join(" и ");
-}
-function buildReport() {
-  const w = W();
-  const lines = ["Отчёт за " + fmtDate(week).slice(3) + " – " + fmtDate(addDays(week,6)).slice(3)];
-  let totalPay = 0, total = 0;
-  for (const p of POINTS) {
-    const shifts = w.shifts.filter(s => s.point === p).sort((a,b) => a.date.localeCompare(b.date));
-    const advs = w.advances.filter(a => a.point === p);
-    if (!shifts.length && !advs.length) continue;
-    lines.push("", p + ":");
-    let pay = 0, courier = 0, adv = 0;
-    for (const s of shifts) {
-      const v = shiftPay(s); pay += v; courier += Number(s.courier) || 0;
-      const noSales = s.sales === null || s.sales === undefined;
-      lines.push(fmtDate(s.date) + " — " + (noSales ? "не внесено" : n(s.sales)) + " → " + n(v));
-    }
-    for (const a of advs) adv += Number(a.amount) || 0;
-    const sum = pay + courier - adv; totalPay += pay; total += sum;
-    lines.push("Итого " + p + ": " + n(pay) + " ₸");
-    if (courier || adv) {
-      if (courier) lines.push("Курьер: +" + n(courier));
-      if (adv) lines.push("Аванс: −" + n(adv));
-      lines.push("Итого " + p + " с учётом " + extrasText(courier, adv) + ": " + n(sum) + " ₸");
-    }
-  }
-  lines.push("", "Всего: " + n(totalPay) + " ₸");
-  const c = w.shifts.reduce((x, s) => x + (Number(s.courier) || 0), 0);
-  const a = w.advances.reduce((x, s) => x + (Number(s.amount) || 0), 0);
-  if (c || a) {
-    lines.push("Всего к выплате с учётом " + extrasText(c, a) + ": " + n(total) + " ₸");
-  }
-  return lines.join("\n");
-}
-document.getElementById("copyReport").onclick = async () => {
-  const text = buildReport(), btn = document.getElementById("copyReport");
-  try { await navigator.clipboard.writeText(text); }
-  catch (e) {
-    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
-    t.select(); document.execCommand("copy"); t.remove();
-  }
-  btn.textContent = "Скопировано ✓"; setTimeout(() => btn.textContent = "Скопировать отчёт", 1500);
-};
+document.getElementById("payFromWeek").onclick = () => payForm(document.getElementById("payFromWeekForm"), { week });
+document.getElementById("prev").onclick = () => { week = addDays(week, -7); closeForms(); render(); };
+document.getElementById("next").onclick = () => { week = addDays(week, 7); closeForms(); render(); };
+function closeForms() { for (const id of ["payFromWeekForm", "addDebtForm"]) document.getElementById(id).innerHTML = ""; }
 
-document.getElementById("prev").onclick = () => { week = addDays(week, -7); render(); };
-document.getElementById("next").onclick = () => { week = addDays(week, 7); render(); };
+// ---------- форма платежа ----------
+// opts: { week } — платёж из ЗП этой недели; { personId } — из вкладки долгов
+function payForm(box, opts) {
+  box.innerHTML = "";
+  const paid = allocate();
+  const people = D().people;
+  const st = { personId: opts.personId || (people.find(p => personBalance(p, paid).left > 0) || people[0]).id,
+               itemId: "", amount: null, kzt: null, kztManual: false, deduction: true, point: "", date: today(),
+               week: opts.week !== undefined ? opts.week : addDays(mondayOf(today()), -7) };
+  const f = el("div", { class: "form" });
+  const draw = () => {
+    f.innerHTML = "";
+    const p = person(st.personId), isBoss = (p.points || []).length > 0, rub = p.currency === "RUB";
+    if (!isBoss) st.deduction = false;
+    if (isBoss && !p.points.includes(st.point)) st.point = p.points[0];
+    const openItems = D().items.filter(i => i.personId === p.id && i.amount - paid[i.id] > 0).sort(itemOrder);
+    const g = el("div", { class: "grid" });
+    g.append(field("Кому", select(D().people.map(x => [x.id, x.name + (personBalance(x, paid).left > 0 ? "" : " ✓")]), st.personId,
+      v => { st.personId = v; st.itemId = ""; st.deduction = true; draw(); })));
+    if (openItems.length > 1) g.append(field("Какой долг", select([["", "По порядку сроков"], ...openItems.map(i =>
+      [i.id, i.title + " — " + money(i.amount - paid[i.id], p.currency)])], st.itemId, v => st.itemId = v)));
+    else g.append(el("div"));
+    const kztIn = numInput(st.kzt, "0", v => { st.kzt = v; st.kztManual = true; });
+    g.append(field("Сумма, " + CUR[p.currency], numInput(st.amount, "0", v => {
+      st.amount = v; if (rub && !st.kztManual) { st.kzt = v ? Math.round(v * D().rates.RUB) : null; kztIn.value = st.kzt || ""; } })));
+    if (rub) g.append(field("Списать в тенге, ₸", kztIn));
+    g.append(field("Дата", dateInput(st.date, v => st.date = v)));
+    if (opts.week === undefined) {
+      const weeks = [...new Set([...Object.keys(data.weeks), addDays(mondayOf(today()), -7), mondayOf(today())])].sort().reverse();
+      g.append(field("Из зарплаты", select([...weeks.map(k => [k, "ЗП " + weekLabel(k)]), ["", "Не из зарплаты"]], st.week, v => { st.week = v; draw(); })));
+    }
+    f.append(g);
+    if (isBoss && st.week) {
+      f.append(el("label", { class: "check" }, el("input", { type: "checkbox", checked: st.deduction, onchange: e => { st.deduction = e.target.checked; draw(); } }),
+        "Вычет из ЗП (начальник удержал при выплате)"));
+      if (st.deduction && p.points.length > 1) f.append(field("С какой точки вычет", select(p.points.map(x => [x, x]), st.point, v => st.point = v)));
+    }
+    f.append(el("div", { class: "actions", style: "margin-top:10px" },
+      el("button", { textContent: "Сохранить", onclick: () => {
+        if (!st.amount) { alert("Введи сумму"); return; }
+        const kzt = rub ? (st.kzt || Math.round(st.amount * D().rates.RUB)) : st.amount;
+        D().payments.push({ id: uid(), personId: p.id, itemId: st.itemId || null, date: st.date || today(), amount: st.amount, kzt,
+          week: st.week || null, deduction: !!(isBoss && st.week && st.deduction), point: (isBoss && st.deduction) ? st.point : null });
+        saveDebts(); box.innerHTML = ""; render(); renderDebts();
+      } }),
+      el("button", { class: "ghost", textContent: "Отмена", onclick: () => box.innerHTML = "" })));
+  };
+  draw(); box.append(f);
+}
 
+// ================= ДОЛГИ =================
+function renderDebts() {
+  const d = D(), paid = allocate();
+  let leftKZT = 0, totalKZT = 0, leftRUB = 0;
+  for (const it of d.items) {
+    const p = person(it.personId); if (!p) continue;
+    const left = Math.max(0, it.amount - paid[it.id]);
+    leftKZT += toKZT(left, p.currency); totalKZT += toKZT(it.amount, p.currency);
+    if (p.currency === "RUB") leftRUB += left;
+  }
+  document.getElementById("debtTotal").textContent = money(leftKZT);
+  document.getElementById("debtTotalAlt").textContent = "≈ " + money(leftKZT / d.rates.RUB, "RUB") + " · ≈ $" + (leftKZT / d.rates.USD).toFixed(2) +
+    (leftRUB ? " · из них в рублях " + money(leftRUB, "RUB") : "");
+  const pct = totalKZT ? Math.round((1 - leftKZT / totalKZT) * 100) : 0;
+  document.getElementById("debtBar").style.width = pct + "%";
+  document.getElementById("debtPaid").textContent = "Отдано " + money(totalKZT - leftKZT) + " из " + money(totalKZT) + " (" + pct + "%)";
+
+  // прогноз: средний платёж в неделю за последние 4 недели
+  const from = addDays(today(), -28);
+  const recent = d.payments.filter(x => x.date >= from && x.date <= today());
+  const last4 = recent.reduce((s, x) => s + (Number(x.kzt) || 0), 0);
+  // делим на число недель, за которые есть история (от 1 до 4)
+  const first = recent.reduce((m, x) => x.date < m ? x.date : m, today());
+  const span = Math.min(4, Math.max(1, Math.ceil((parse(today()) - parse(first)) / 864e5 / 7)));
+  const perWeek = last4 / span;
+  const fc = document.getElementById("forecast");
+  if (leftKZT <= 0) fc.innerHTML = "<b class='done'>Долгов нет ✓</b>";
+  else if (perWeek <= 0) fc.innerHTML = "<span class='muted'>Прогноз появится после первых платежей.</span>";
+  else {
+    const weeks = Math.ceil(leftKZT / perWeek);
+    fc.innerHTML = "Темп: ≈ " + money(perWeek) + " в неделю (по последним платежам).<br>Прогноз: всё закроешь к <b>" +
+      dm(addDays(today(), weeks * 7)) + "." + parse(addDays(today(), weeks * 7)).getFullYear() + "</b> (≈ " + weeks + " нед.)";
+  }
+
+  // сроки
+  const due = document.getElementById("dueList"); due.innerHTML = "";
+  const open = d.items.filter(i => i.due && i.amount - paid[i.id] > 0).sort(itemOrder);
+  if (!open.length) due.innerHTML = "<div class='muted'>Нет долгов со сроком</div>";
+  for (const it of open) {
+    const p = person(it.personId), days = Math.round((parse(it.due) - parse(today())) / 864e5);
+    const cls = days < 0 ? "minus" : days <= 7 ? "warn" : "";
+    const when = days < 0 ? "просрочен на " + (-days) + " дн." : days === 0 ? "сегодня" : "через " + days + " дн.";
+    due.append(el("div", { class: "line" },
+      el("span", { html: "<b>" + p.name + "</b> " + (it.title !== "Долг" ? "<span class='muted'>" + it.title + "</span>" : "") }),
+      el("span", { class: cls, html: money(it.amount - paid[it.id], p.currency) + "<br><span class='muted'>до " + dm(it.due) + ", " + when + "</span>" })));
+  }
+
+  // люди
+  const box = document.getElementById("people"); box.innerHTML = "";
+  const list = d.people.map(p => ({ p, b: personBalance(p, paid) })).sort((a, b) => (b.b.left > 0) - (a.b.left > 0) || toKZT(b.b.left, b.p.currency) - toKZT(a.b.left, a.p.currency));
+  for (const { p, b } of list) {
+    const det = el("details");
+    if (openPeople.has(p.id)) det.open = true;
+    det.ontoggle = () => det.open ? openPeople.add(p.id) : openPeople.delete(p.id);
+    const sum = b.left > 0 ? money(b.left, p.currency) + (p.currency === "RUB" ? " <span class='muted'>≈" + money(toKZT(b.left, "RUB")) + "</span>" : "")
+                           : (b.total ? "<span class='done'>закрыт ✓</span>" : "<span class='muted'>нет долга</span>");
+    det.append(el("summary", {}, el("span", { textContent: p.name + ((p.points || []).length ? " · " + p.points.join(", ") : "") }), el("span", { html: sum })));
+    const inner = el("div", { style: "margin-top:8px" });
+    // долги человека
+    for (const it of b.items.sort(itemOrder)) {
+      const left = Math.max(0, it.amount - paid[it.id]);
+      const g = el("div", { class: "grid" },
+        field("Что", el("input", { type: "text", value: it.title, onchange: e => { it.title = e.target.value || "Долг"; saveDebts(); renderDebts(); } })),
+        field("Сумма, " + CUR[p.currency], numInput(it.amount, "0", null)),
+        field("Взял", dateInput(it.date, v => { if (v) { it.date = v; saveDebts(); } })),
+        field("Срок", dateInput(it.due, v => { it.due = v; saveDebts(); renderDebts(); })));
+      const amt = g.querySelectorAll("input")[1];
+      amt.onchange = () => { it.amount = Number(amt.value) || 0; saveDebts(); renderDebts(); render(); };
+      g.style.marginTop = "6px";
+      inner.append(el("div", { class: "item" },
+        el("div", { class: "row" }, el("span", { html: left > 0 ? "Осталось <b>" + money(left, p.currency) + "</b>" : "<span class='done'>закрыт ✓</span>" }),
+          delBtn("Удалить этот долг?", () => { d.items = d.items.filter(x => x !== it); saveDebts(); renderDebts(); render(); })), g));
+    }
+    // история платежей
+    const pays = d.payments.filter(x => x.personId === p.id).sort((a, b) => b.date.localeCompare(a.date));
+    if (pays.length) {
+      inner.append(el("h3", { textContent: "История платежей" }));
+      for (const x of pays) {
+        const it = x.itemId && d.items.find(i => i.id === x.itemId);
+        const info = dm(x.date) + (it ? " · " + it.title : "") + (x.deduction ? " · вычет из ЗП" : x.week ? " · из ЗП " + weekLabel(x.week) : "");
+        inner.append(el("div", { class: "line" }, el("span", { class: "muted", textContent: info }),
+          el("span", {}, money(x.amount, p.currency) + (p.currency === "RUB" ? " (" + money(x.kzt) + ")" : ""),
+            el("button", { class: "del small", textContent: "✕", onclick: () => {
+              if (confirm("Удалить платёж?")) { d.payments = d.payments.filter(y => y !== x); saveDebts(); renderDebts(); render(); } } }))));
+      }
+    }
+    const formBox = el("div");
+    inner.append(el("div", { class: "actions", style: "margin-top:10px" },
+      el("button", { class: "small", textContent: "Отдать", onclick: () => payForm(formBox, { personId: p.id }) }),
+      el("button", { class: "ghost small", textContent: "Взял ещё", onclick: () => debtForm(formBox, p.id) }),
+      !b.items.length && !pays.length && !(p.points || []).length ? el("button", { class: "del small", textContent: "Удалить человека", onclick: () => {
+        d.people = d.people.filter(x => x !== p); saveDebts(); renderDebts(); } }) : null), formBox);
+    det.append(inner);
+    box.append(det);
+  }
+
+  for (const [id, key] of [["rateRUB", "RUB"], ["rateUSD", "USD"]]) {
+    const i = document.getElementById(id); if (document.activeElement !== i) i.value = d.rates[key];
+  }
+  const fi = document.getElementById("foodSet"); if (document.activeElement !== fi) fi.value = d.food;
+}
+const openPeople = new Set();
+
+// форма нового долга
+function debtForm(box, personId) {
+  box.innerHTML = "";
+  const st = { personId: personId || D().people[0].id, name: "", currency: "KZT", title: "", amount: null, date: today(), due: "" };
+  const f = el("div", { class: "form" });
+  const draw = () => {
+    f.innerHTML = "";
+    const g = el("div", { class: "grid" });
+    const isNew = st.personId === "__new";
+    g.append(field("Кому должен", select([...D().people.map(p => [p.id, p.name]), ["__new", "+ Новый человек…"]], st.personId, v => { st.personId = v; draw(); })));
+    if (isNew) {
+      g.append(field("Имя", el("input", { type: "text", value: st.name, oninput: e => st.name = e.target.value })));
+      g.append(field("Валюта", select([["KZT", "Тенге ₸"], ["RUB", "Рубли ₽"]], st.currency, v => { st.currency = v; draw(); })));
+    }
+    const cur = isNew ? st.currency : person(st.personId).currency;
+    g.append(field("За что", el("input", { type: "text", value: st.title, placeholder: "Долг", oninput: e => st.title = e.target.value })));
+    g.append(field("Сумма, " + CUR[cur], numInput(st.amount, "0", v => st.amount = v)));
+    g.append(field("Когда взял", dateInput(st.date, v => st.date = v)));
+    g.append(field("Срок (до какого числа)", dateInput(st.due, v => st.due = v)));
+    f.append(g, el("div", { class: "actions", style: "margin-top:10px" },
+      el("button", { textContent: "Сохранить", onclick: () => {
+        if (!st.amount) { alert("Введи сумму"); return; }
+        let pid = st.personId;
+        if (isNew) {
+          if (!st.name.trim()) { alert("Введи имя"); return; }
+          pid = uid(); D().people.push({ id: pid, name: st.name.trim(), currency: st.currency, points: [] });
+        }
+        D().items.push({ id: uid(), personId: pid, title: st.title.trim() || "Долг", amount: st.amount, date: st.date || today(), due: st.due || "" });
+        openPeople.add(pid); saveDebts(); box.innerHTML = ""; renderDebts();
+      } }),
+      el("button", { class: "ghost", textContent: "Отмена", onclick: () => box.innerHTML = "" })));
+  };
+  draw(); box.append(f);
+}
+document.getElementById("addDebt").onclick = () => debtForm(document.getElementById("addDebtForm"));
+document.getElementById("rateRUB").onchange = e => { if (+e.target.value > 0) { D().rates.RUB = +e.target.value; saveDebts(); renderDebts(); } };
+document.getElementById("rateUSD").onchange = e => { if (+e.target.value > 0) { D().rates.USD = +e.target.value; saveDebts(); renderDebts(); } };
+document.getElementById("foodSet").onchange = e => { D().food = Math.max(0, +e.target.value || 0); saveDebts(); render(); };
+
+// ---------- вкладки ----------
+let tab = "salary";
+try { tab = localStorage.getItem("salary-tab") || "salary"; } catch (e) {}
+function showTab(t) {
+  tab = t;
+  try { localStorage.setItem("salary-tab", t); } catch (e) {}
+  document.getElementById("salaryView").hidden = t !== "salary";
+  document.getElementById("debtsView").hidden = t !== "debts";
+  document.getElementById("tabSalary").className = t === "salary" ? "on" : "";
+  document.getElementById("tabDebts").className = t === "debts" ? "on" : "";
+}
+document.getElementById("tabSalary").onclick = () => showTab("salary");
+document.getElementById("tabDebts").onclick = () => showTab("debts");
+
+// ---------- резервная копия ----------
 document.getElementById("export").onclick = () => {
   const blob = new Blob([JSON.stringify(data, null, 1)], { type: "application/json" });
-  const a = document.createElement("a"); a.href = URL.createObjectURL(blob);
-  a.download = "zarplata-" + iso(new Date()) + ".json"; a.click();
+  const a = el("a", { href: URL.createObjectURL(blob), download: "zarplata-" + today() + ".json" }); a.click();
 };
 document.getElementById("importBtn").onclick = () => document.getElementById("importFile").click();
 document.getElementById("importFile").onchange = e => {
@@ -317,7 +714,9 @@ document.getElementById("importFile").onchange = e => {
     try { const d = JSON.parse(t); if (!d.weeks) throw 0;
       if (confirm("Заменить текущие данные данными из файла?")) {
         data = d; for (const w of Object.values(data.weeks)) w.updatedAt = Date.now();
-        save(false); scheduleSync(); render(); }
+        if (!data.debts) data.debts = seedDebts();
+        migrateAdvances(); data.debts.updatedAt = Date.now();
+        store(); scheduleSync(); render(); renderDebts(); }
     } catch (err) { alert("Файл не подходит"); }
   });
   e.target.value = "";
@@ -334,17 +733,22 @@ function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync))
 function setStatus(t) { document.getElementById("syncStatus").textContent = t; }
 function scheduleSync() { if (!sync.password) return; clearTimeout(syncTimer); syncTimer = setTimeout(doSync, 800); }
 
-// По каждой неделе берём ту версию, что изменена позже
+// По каждой неделе и по блоку долгов берём ту версию, что изменена позже
 function merge(local, remote) {
   const out = { weeks: {} };
-  const keys = new Set([...Object.keys(local.weeks), ...Object.keys(remote.weeks || {})]);
-  for (const k of keys) {
-    const a = local.weeks[k], b = (remote.weeks || {})[k];
+  let fromServer = false;
+  const rw = remote.weeks || {};
+  for (const k of new Set([...Object.keys(local.weeks), ...Object.keys(rw)])) {
+    const a = local.weeks[k], b = rw[k];
     const pick = !b ? a : !a ? b : ((a.updatedAt || 0) >= (b.updatedAt || 0) ? a : b);
-    if (pick !== a && JSON.stringify(pick) !== JSON.stringify(a)) out.fromServer = true;
+    if (pick !== a && JSON.stringify(pick) !== JSON.stringify(a)) fromServer = true;
     out.weeks[k] = pick;
   }
-  return out;
+  const a = local.debts, b = remote.debts;
+  // при равенстве (например, оба — начальные данные) берём серверную версию
+  out.debts = !b ? a : (a.updatedAt || 0) > (b.updatedAt || 0) ? a : b;
+  if (out.debts !== a && JSON.stringify(out.debts) !== JSON.stringify(a)) fromServer = true;
+  return { merged: out, fromServer };
 }
 async function api(method, body) {
   const r = await fetch("api/data", { method, headers: { "Content-Type": "application/json", "x-password": sync.password },
@@ -358,18 +762,21 @@ async function doSync() {
   if (syncing) { syncAgain = true; return; }
   syncing = true; setStatus("синхронизация…");
   try {
-    let server = (await api("GET")).json, fromServer = false;
+    let server = (await api("GET")).json, changed = false;
     for (let i = 0; i < 5; i++) {
-      const merged = merge(data, server.data);
-      if (merged.fromServer) fromServer = true;
-      delete merged.fromServer;
-      data = merged; save(false);
-      if (JSON.stringify(merged) === JSON.stringify(server.data)) break;
-      const r = await api("PUT", { baseRev: server.rev, data: merged });
+      const m = merge(data, server.data);
+      if (m.fromServer) changed = true;
+      data = m.merged;
+      const before = JSON.stringify(data.debts);
+      migrateAdvances();
+      if (JSON.stringify(data.debts) !== before) data.debts.updatedAt = Date.now();
+      prune(); store();
+      if (JSON.stringify(data) === JSON.stringify(server.data)) break;
+      const r = await api("PUT", { baseRev: server.rev, data });
       if (r.status === 200) break;
       server = r.json; // конфликт — сливаем ещё раз
     }
-    if (fromServer) render(); // перерисовываем, только если пришли изменения с другого устройства
+    if (changed) { render(); renderDebts(); } // перерисовываем, только если пришли изменения с другого устройства
     setStatus("✓ " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
     if (e.message === "auth") { setStatus("неверный пароль"); sync.password = ""; saveSync(); showSync(); }
@@ -392,7 +799,10 @@ document.getElementById("syncNow").onclick = doSync;
 document.addEventListener("visibilitychange", () => { if (!document.hidden) doSync(); });
 window.addEventListener("online", doSync);
 
-save(false); render(); showSync(); doSync();
+// ---------- старт ----------
+{ const before = JSON.stringify(data.debts); migrateAdvances(); if (JSON.stringify(data.debts) !== before && data.debts.updatedAt) data.debts.updatedAt = Date.now(); }
+prune(); store();
+showTab(tab); render(); renderDebts(); showSync(); doSync();
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
