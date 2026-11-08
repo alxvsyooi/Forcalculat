@@ -69,3 +69,24 @@ jobs:
         with:
           name: Zarplata-ios
           path: Zarplata.ipa
+
+  # Выкладываем файлы на страницу «Releases» — оттуда удобно качать с телефона
+  release:
+    needs: [android, ios]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          merge-multiple: true
+      - name: Обновить релиз «latest»
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          gh release delete latest --yes --cleanup-tag || true
+          gh release create latest Zarplata.apk Zarplata.ipa \
+            --title "Зарплата — последняя сборка" \
+            --notes "Сборка от $(date -u '+%d.%m.%Y %H:%M') UTC. Zarplata.apk — Android, Zarplata.ipa — iPhone (через Sideloadly)." \
+            --target "${{ github.sha }}"
