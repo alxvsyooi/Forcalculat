@@ -257,10 +257,13 @@ document.getElementById("addAdv").onclick = () => {
 };
 // ---------- отчёт ----------
 function n(x) { return Math.round(x).toLocaleString("ru-RU"); }
+function extrasText(courier, adv) {
+  return [adv ? "аванса" : "", courier ? "курьера" : ""].filter(Boolean).join(" и ");
+}
 function buildReport() {
   const w = W();
   const lines = ["Отчёт за " + fmtDate(week).slice(3) + " – " + fmtDate(addDays(week,6)).slice(3)];
-  let total = 0;
+  let totalPay = 0, total = 0;
   for (const p of POINTS) {
     const shifts = w.shifts.filter(s => s.point === p).sort((a,b) => a.date.localeCompare(b.date));
     const advs = w.advances.filter(a => a.point === p);
@@ -270,16 +273,23 @@ function buildReport() {
     for (const s of shifts) {
       const v = shiftPay(s); pay += v; courier += Number(s.courier) || 0;
       const noSales = s.sales === null || s.sales === undefined;
-      lines.push(fmtDate(s.date) + " — " + (noSales ? "продажи не внесены" : "продажи " + n(s.sales)) +
-        " → " + n(v));
+      lines.push(fmtDate(s.date) + " — " + (noSales ? "не внесено" : n(s.sales)) + " → " + n(v));
     }
     for (const a of advs) adv += Number(a.amount) || 0;
-    if (courier) lines.push("Курьер: +" + n(courier));
-    if (adv) lines.push("Аванс: −" + n(adv));
-    const sum = pay + courier - adv; total += sum;
-    lines.push("Итого " + p + ": " + n(sum) + " ₸");
+    const sum = pay + courier - adv; totalPay += pay; total += sum;
+    lines.push("Итого " + p + ": " + n(pay) + " ₸");
+    if (courier || adv) {
+      if (courier) lines.push("Курьер: +" + n(courier));
+      if (adv) lines.push("Аванс: −" + n(adv));
+      lines.push("Итого " + p + " с учётом " + extrasText(courier, adv) + ": " + n(sum) + " ₸");
+    }
   }
-  lines.push("", "Всего к выплате: " + n(total) + " ₸");
+  lines.push("", "Всего: " + n(totalPay) + " ₸");
+  const c = w.shifts.reduce((x, s) => x + (Number(s.courier) || 0), 0);
+  const a = w.advances.reduce((x, s) => x + (Number(s.amount) || 0), 0);
+  if (c || a) {
+    lines.push("Всего к выплате с учётом " + extrasText(c, a) + ": " + n(total) + " ₸");
+  }
   return lines.join("\n");
 }
 document.getElementById("copyReport").onclick = async () => {
