@@ -16,7 +16,7 @@
   }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,system-ui,Roboto,sans-serif; background:var(--bg); color:var(--text);
-         padding:16px 16px calc(24px + env(safe-area-inset-bottom)); max-width:600px; margin-inline:auto; }
+         padding:calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width:600px; margin-inline:auto; }
   h1 { font-size:20px; margin:4px 0 12px; }
   h2 { font-size:16px; margin:0 0 10px; }
   .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; margin-bottom:12px; }
@@ -27,8 +27,16 @@
   button.ghost { background:transparent; color:var(--accent); border:1px solid var(--border); }
   button.del { background:transparent; color:var(--red); padding:6px 8px; }
   label { font-size:13px; color:var(--muted); display:block; margin-bottom:4px; }
-  input, select { font:inherit; font-size:16px; width:100%; padding:9px 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); }
-  .grid { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  input, select { font:inherit; font-size:16px; width:100%; min-width:0; max-width:100%; height:42px; padding:0 10px; border:1px solid var(--border); border-radius:8px; background:var(--bg); color:var(--text); }
+  /* iOS Safari: поле даты иначе шире колонки и налезает на соседнее */
+  input[type=date], input[type=number] { -webkit-appearance:none; appearance:none; display:block; }
+  input::-webkit-date-and-time-value { text-align:left; }
+  .grid { display:grid; grid-template-columns:minmax(0,1fr) minmax(0,1fr); gap:10px; }
+  .grid > div { min-width:0; }
+  .tablewrap { overflow-x:auto; margin-top:10px; }
+  #byPoint td, #byPoint th { white-space:nowrap; }
+  .row > * { min-width:0; }
+  .row > button { flex-shrink:0; }
   .row { display:flex; gap:10px; align-items:center; justify-content:space-between; }
   .item { border-top:1px solid var(--border); padding:10px 0; }
   .item:first-child { border-top:none; padding-top:0; }
@@ -55,7 +63,8 @@
   <h2>Итого к выплате</h2>
   <div class="big" id="total">0 ₸</div>
   <div class="muted" id="totalNote"></div>
-  <table id="byPoint" style="margin-top:10px"></table>
+  <div class="tablewrap"><table id="byPoint"></table></div>
+  <div class="actions" style="margin-top:12px"><button id="copyReport">Скопировать отчёт</button></div>
 </div>
 
 <div class="card">
@@ -246,6 +255,43 @@ document.getElementById("addAdv").onclick = () => {
   W().advances.push({ id: uid(), date: defaultDate(), point: lastPoint(), amount: 0 });
   save(); render();
 };
+// ---------- отчёт ----------
+function n(x) { return Math.round(x).toLocaleString("ru-RU"); }
+function buildReport() {
+  const w = W();
+  const lines = ["Отчёт за " + fmtDate(week).slice(3) + " – " + fmtDate(addDays(week,6)).slice(3)];
+  let total = 0;
+  for (const p of POINTS) {
+    const shifts = w.shifts.filter(s => s.point === p).sort((a,b) => a.date.localeCompare(b.date));
+    const advs = w.advances.filter(a => a.point === p);
+    if (!shifts.length && !advs.length) continue;
+    lines.push("", p + ":");
+    let pay = 0, courier = 0, adv = 0;
+    for (const s of shifts) {
+      const v = shiftPay(s); pay += v; courier += Number(s.courier) || 0;
+      const noSales = s.sales === null || s.sales === undefined;
+      lines.push(fmtDate(s.date) + " — " + (noSales ? "продажи не внесены" : "продажи " + n(s.sales)) +
+        " → " + n(v) + (noSales || s.sales < MIN_SALES ? " (мин.)" : ""));
+    }
+    for (const a of advs) adv += Number(a.amount) || 0;
+    if (courier) lines.push("Курьер: +" + n(courier));
+    if (adv) lines.push("Аванс: −" + n(adv));
+    const sum = pay + courier - adv; total += sum;
+    lines.push("Итого " + p + ": " + n(sum) + " ₸");
+  }
+  lines.push("", "Всего к выплате: " + n(total) + " ₸");
+  return lines.join("\n");
+}
+document.getElementById("copyReport").onclick = async () => {
+  const text = buildReport(), btn = document.getElementById("copyReport");
+  try { await navigator.clipboard.writeText(text); }
+  catch (e) {
+    const t = document.createElement("textarea"); t.value = text; document.body.appendChild(t);
+    t.select(); document.execCommand("copy"); t.remove();
+  }
+  btn.textContent = "Скопировано ✓"; setTimeout(() => btn.textContent = "Скопировать отчёт", 1500);
+};
+
 document.getElementById("prev").onclick = () => { week = addDays(week, -7); render(); };
 document.getElementById("next").onclick = () => { week = addDays(week, 7); render(); };
 
