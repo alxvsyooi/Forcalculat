@@ -65,9 +65,50 @@
   summary { cursor:pointer; list-style:none; display:flex; justify-content:space-between; gap:10px; font-weight:600; }
   summary::-webkit-details-marker { display:none; }
   .done { color:var(--green); }
+  .center { max-width:360px; margin:40px auto 0; }
+  .center h1 { font-size:22px; text-align:center; margin:0 0 16px; }
+  .stack > * + * { margin-top:10px; }
+  .err { color:var(--red); font-size:14px; min-height:18px; }
+  .dots { display:flex; justify-content:center; gap:14px; margin:18px 0; }
+  .dots span { width:14px; height:14px; border-radius:50%; border:2px solid var(--accent); }
+  .dots span.on { background:var(--accent); }
+  .keypad { display:grid; grid-template-columns:repeat(3, 72px); gap:14px; justify-content:center; }
+  .keypad button { height:72px; border-radius:50%; font-size:26px; background:var(--card); color:var(--text); border:1px solid var(--border); }
+  .keypad button.txt { font-size:14px; border:none; background:transparent; color:var(--accent); }
 </style>
 </head>
 <body>
+<!-- ================= ВХОД ================= -->
+<div id="authView" class="center" hidden>
+  <h1>Зарплата</h1>
+  <div class="tabs"><button id="authLoginTab" class="on">Вход</button><button id="authRegTab">Регистрация</button></div>
+  <div class="card stack">
+    <div><label>Логин</label><input type="text" id="authLogin" autocomplete="username" autocapitalize="off" autocorrect="off"></div>
+    <div><label>Пароль</label><input type="password" id="authPass" autocomplete="current-password"></div>
+    <div id="authRegExtra" hidden>
+      <label>Пароль ещё раз</label><input type="password" id="authPass2" autocomplete="new-password">
+      <label style="margin-top:10px">Старый пароль синхронизации (если был — перенесём твои данные)</label>
+      <input type="password" id="authLegacy" autocomplete="off">
+    </div>
+    <label class="check"><input type="checkbox" id="authTemp"> Чужое устройство (не запоминать)</label>
+    <div class="err" id="authErr"></div>
+    <button id="authGo" style="width:100%">Войти</button>
+  </div>
+</div>
+
+<!-- ================= БЛОКИРОВКА ================= -->
+<div id="lockView" class="center" hidden>
+  <h1 id="lockTitle">Введи код</h1>
+  <div class="dots" id="lockDots"><span></span><span></span><span></span><span></span></div>
+  <div class="err" id="lockErr" style="text-align:center"></div>
+  <div class="keypad" id="keypad"></div>
+  <div class="actions" style="justify-content:center; margin-top:20px">
+    <button class="ghost" id="lockFace" hidden>Войти по Face ID</button>
+    <button class="ghost" id="lockLogout">Выйти из аккаунта</button>
+  </div>
+</div>
+
+<div id="appView" hidden>
 <div class="tabs"><button id="tabSalary">Зарплата</button><button id="tabDebts">Долги</button></div>
 
 <!-- ================= ЗАРПЛАТА ================= -->
@@ -139,14 +180,20 @@
 
 <!-- ================= ОБЩЕЕ ================= -->
 <div class="card">
-  <div class="row"><h2>Синхронизация</h2><span class="muted" id="syncStatus"></span></div>
-  <div id="syncForm">
-    <label for="syncPass">Пароль (тот же на всех устройствах)</label>
-    <div class="row"><input type="password" id="syncPass" autocomplete="current-password"><button id="syncOn">Включить</button></div>
+  <div class="row"><h2>Аккаунт</h2><span class="muted" id="syncStatus"></span></div>
+  <div class="line"><span>Логин</span><b id="accLogin"></b></div>
+  <div id="accSecurity">
+    <div class="line"><span>Код-пароль</span><span id="pinState"></span></div>
+    <div class="line"><span>Face ID / отпечаток</span><span id="faceState"></span></div>
   </div>
-  <div id="syncOnBox" hidden>
-    <div class="actions"><button class="ghost" id="syncNow">Синхронизировать</button><button class="ghost" id="syncOff">Отключить</button></div>
+  <div class="actions" style="margin-top:10px">
+    <button class="ghost small" id="syncNow">Синхронизировать</button>
+    <button class="ghost small" id="pinBtn"></button>
+    <button class="ghost small" id="faceBtn"></button>
+    <button class="ghost small" id="passBtn">Сменить пароль</button>
+    <button class="del small" id="logoutBtn">Выйти</button>
   </div>
+  <div id="passForm"></div>
 </div>
 
 <div class="card">
@@ -158,6 +205,7 @@
     <input type="file" id="importFile" accept=".json,application/json" hidden>
   </div>
 </div>
+</div><!-- appView -->
 
 <script>
 const POINTS = ["БЦА", "ДАМУ", "АРУЖАН", "ЖИБЕК", "ТУРАН"];
@@ -165,7 +213,6 @@ const PERCENT = 0.20;
 const MIN_SALES = 35000;
 const MIN_PAY = 7000;
 const KEEP_WEEKS = 5;          // текущая + 4 прошлые
-const KEY = "salary-data-v1";
 const DAYS = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
 const CUR = { KZT: "₸", RUB: "₽" };
 
@@ -183,44 +230,20 @@ function uid() { return Date.now().toString(36) + Math.random().toString(36).sli
 function weekLabel(k) { return dm(k) + "–" + dm(addDays(k, 6)); }
 
 // ---------- хранилище ----------
+// ---------- хранилище ----------
+// Данные лежат на сервере в аккаунте; на устройстве — копия для работы без интернета.
+// «Чужое устройство» — всё в sessionStorage, которое стирается при закрытии вкладки.
+let auth = null;          // { token, login, temp }
 let data = { weeks: {} };
-try { data = JSON.parse(localStorage.getItem(KEY)) || data; } catch (e) {}
-if (!data.weeks) data.weeks = {};
-
-// Начальные долги из таблицы (07.11.2026). updatedAt = 0, чтобы не перезаписать данные с сервера.
-function seedDebts() {
-  const P = (id, name, currency, points) => ({ id, name, currency, points: points || [] });
-  const I = (id, personId, title, amount, due) => ({ id, personId, title, amount, date: "2026-11-07", due });
-  return {
-    updatedAt: 0, migrated: [],
-    rates: { RUB: 5.46, USD: 447.14 }, food: 10000,
-    people: [
-      P("talgat", "Талгат", "KZT", ["БЦА"]),
-      P("nursat", "Нурсат", "KZT", ["ДАМУ", "ТУРАН"]),
-      P("tleu", "Тлеуберди", "KZT", ["ЖИБЕК", "АРУЖАН"]),
-      P("nursultan", "Нурсултан", "KZT"),
-      P("raiym", "Райымбек", "KZT"),
-      P("vinill", "Винилл", "RUB"),
-      P("vadim", "Вадим", "RUB"),
-      P("oleg", "Олег", "RUB"),
-      P("albert", "Альберт", "RUB"),
-    ],
-    items: [
-      I("seed-tleu", "tleu", "Долг", 45000, "2026-11-23"),
-      I("seed-nursat", "nursat", "Долг", 22500, "2026-11-16"),
-      I("seed-nursultan", "nursultan", "Долг", 30000, "2026-11-16"),
-      I("seed-raiym-pc", "raiym", "За компы", 5000, "2026-11-09"),
-      I("seed-raiym-watch", "raiym", "За часы", 30000, "2026-11-16"),
-      I("seed-raiym-flat", "raiym", "Квартира (30к прошлый + 100к этот месяц)", 130000, "2026-12-07"),
-      I("seed-vinill", "vinill", "Долг", 20000, "2026-11-30"),
-      I("seed-vadim", "vadim", "Долг (+4 000 ₽ за ожидание)", 16000, "2026-12-28"),
-      I("seed-oleg", "oleg", "Долг (+3 000 ₽ за ожидание)", 16000, "2027-01-18"),
-      I("seed-albert", "albert", "Долг", 1300, "2027-01-25"),
-    ],
-    payments: [],
-  };
+function stash() { return auth && auth.temp ? sessionStorage : localStorage; }
+function dataKey() { return "salary-data:" + auth.login.toLowerCase(); }
+function emptyDebts() { return { updatedAt: 0, migrated: [], rates: { RUB: 5.46, USD: 447.14 }, food: 10000, people: [], items: [], payments: [] }; }
+function loadLocal() {
+  data = { weeks: {} };
+  try { data = JSON.parse(stash().getItem(dataKey())) || data; } catch (e) {}
+  if (!data.weeks) data.weeks = {};
+  if (!data.debts) data.debts = emptyDebts();
 }
-if (!data.debts) data.debts = seedDebts();
 const D = () => data.debts;
 
 // Старые авансы из недель переносим в долги начальнику (+ вычет в той же неделе, как считалось раньше)
@@ -231,7 +254,7 @@ function migrateAdvances() {
       if (d.migrated.includes(a.id)) continue;
       d.migrated.push(a.id);
       if (!a.amount) continue;
-      const boss = bossOf(a.point);
+      const boss = ensureBoss(a.point);
       d.items.push({ id: "adv-" + a.id, personId: boss.id, title: "Аванс", amount: a.amount, date: a.date, due: "", week: k, point: a.point, advance: true });
       d.payments.push({ id: "pay-adv-" + a.id, personId: boss.id, itemId: "adv-" + a.id, date: addDays(k, 7), amount: a.amount, kzt: a.amount, week: k, deduction: true, point: a.point });
     }
@@ -243,7 +266,8 @@ function prune() {
   for (const k of Object.keys(data.weeks)) if (k < oldest) delete data.weeks[k];
 }
 function store() {
-  try { localStorage.setItem(KEY, JSON.stringify(data)); } catch (e) { alert("Не удалось сохранить данные"); }
+  if (!auth) return;
+  try { stash().setItem(dataKey(), JSON.stringify(data)); } catch (e) { alert("Не удалось сохранить данные"); }
 }
 function save() { W().updatedAt = Date.now(); prune(); store(); scheduleSync(); }       // изменилась неделя
 function saveDebts() { D().updatedAt = Date.now(); store(); scheduleSync(); }           // изменились долги
@@ -260,6 +284,12 @@ function shiftPay(s) {
 // ---------- расчёт долгов ----------
 function person(id) { return D().people.find(p => p.id === id); }
 function bossOf(point) { return D().people.find(p => (p.points || []).includes(point)); }
+// Начальник точки; если ещё не указан — создаём «Начальник ТОЧКА» (имя можно поменять во вкладке «Долги»)
+function ensureBoss(point) {
+  let b = bossOf(point);
+  if (!b) { b = { id: uid(), name: "Начальник " + point, currency: "KZT", points: [point] }; D().people.push(b); }
+  return b;
+}
 function toKZT(amount, cur) { return cur === "RUB" ? amount * D().rates.RUB : amount; }
 function itemOrder(a, b) { return (a.due || "9999").localeCompare(b.due || "9999") || a.date.localeCompare(b.date); }
 
@@ -364,7 +394,7 @@ function render() {
     const head = el("div", { html: "<b>" + money(a.amount || 0) + "</b> <span class='muted'>долг: " + (person(a.personId) || {}).name + "</span>" });
     const g = el("div", { class: "grid" },
       field("Дата", dateInput(a.date, v => { if (v) { a.date = v; saveDebts(); } }, true)),
-      field("Точка (кто выдал)", pointSelect(a.point, v => { a.point = v; a.personId = bossOf(v).id; saveDebts(); render(); })),
+      field("Точка (кто выдал)", pointSelect(a.point, v => { a.point = v; a.personId = ensureBoss(v).id; saveDebts(); render(); })),
       field("Сумма, ₸", numInput(a.amount, "0", v => { a.amount = v || 0; head.querySelector("b").textContent = money(a.amount); saveDebts(); renderTotals(); }))
     );
     g.style.marginTop = "8px";
@@ -488,7 +518,7 @@ document.getElementById("addShift").onclick = () => {
 };
 document.getElementById("addAdv").onclick = () => {
   const point = lastPoint();
-  D().items.push({ id: uid(), personId: bossOf(point).id, title: "Аванс", amount: 0, date: defaultDate(), due: "", week, point, advance: true });
+  D().items.push({ id: uid(), personId: ensureBoss(point).id, title: "Аванс", amount: 0, date: defaultDate(), due: "", week, point, advance: true });
   saveDebts(); render();
 };
 document.getElementById("payFromWeek").onclick = () => payForm(document.getElementById("payFromWeekForm"), { week });
@@ -500,6 +530,7 @@ function closeForms() { for (const id of ["payFromWeekForm", "addDebtForm"]) doc
 // opts: { week } — платёж из ЗП этой недели; { personId } — из вкладки долгов
 function payForm(box, opts) {
   box.innerHTML = "";
+  if (!D().people.length) { alert("Сначала добавь долг во вкладке «Долги»"); return; }
   const paid = allocate();
   const people = D().people;
   const st = { personId: opts.personId || (people.find(p => personBalance(p, paid).left > 0) || people[0]).id,
@@ -652,7 +683,7 @@ const openPeople = new Set();
 // форма нового долга
 function debtForm(box, personId) {
   box.innerHTML = "";
-  const st = { personId: personId || D().people[0].id, name: "", currency: "KZT", title: "", amount: null, date: today(), due: "" };
+  const st = { personId: personId || (D().people[0] || { id: "__new" }).id, name: "", currency: "KZT", points: [], title: "", amount: null, date: today(), due: "" };
   const f = el("div", { class: "form" });
   const draw = () => {
     f.innerHTML = "";
@@ -662,6 +693,10 @@ function debtForm(box, personId) {
     if (isNew) {
       g.append(field("Имя", el("input", { type: "text", value: st.name, oninput: e => st.name = e.target.value })));
       g.append(field("Валюта", select([["KZT", "Тенге ₸"], ["RUB", "Рубли ₽"]], st.currency, v => { st.currency = v; draw(); })));
+      const free = POINTS.filter(pt => !bossOf(pt));
+      if (free.length) g.append(el("div", { class: "full" }, el("label", { textContent: "Начальник точки (если это начальник)" }),
+        ...free.map(pt => el("label", { class: "check" }, el("input", { type: "checkbox", checked: st.points.includes(pt),
+          onchange: e => { st.points = e.target.checked ? [...st.points, pt] : st.points.filter(x => x !== pt); } }), pt))));
     }
     const cur = isNew ? st.currency : person(st.personId).currency;
     g.append(field("За что", el("input", { type: "text", value: st.title, placeholder: "Долг", oninput: e => st.title = e.target.value })));
@@ -674,7 +709,7 @@ function debtForm(box, personId) {
         let pid = st.personId;
         if (isNew) {
           if (!st.name.trim()) { alert("Введи имя"); return; }
-          pid = uid(); D().people.push({ id: pid, name: st.name.trim(), currency: st.currency, points: [] });
+          pid = uid(); D().people.push({ id: pid, name: st.name.trim(), currency: st.currency, points: st.points });
         }
         D().items.push({ id: uid(), personId: pid, title: st.title.trim() || "Долг", amount: st.amount, date: st.date || today(), due: st.due || "" });
         openPeople.add(pid); saveDebts(); box.innerHTML = ""; renderDebts();
@@ -714,7 +749,7 @@ document.getElementById("importFile").onchange = e => {
     try { const d = JSON.parse(t); if (!d.weeks) throw 0;
       if (confirm("Заменить текущие данные данными из файла?")) {
         data = d; for (const w of Object.values(data.weeks)) w.updatedAt = Date.now();
-        if (!data.debts) data.debts = seedDebts();
+        if (!data.debts) data.debts = emptyDebts();
         migrateAdvances(); data.debts.updatedAt = Date.now();
         store(); scheduleSync(); render(); renderDebts(); }
     } catch (err) { alert("Файл не подходит"); }
@@ -723,15 +758,9 @@ document.getElementById("importFile").onchange = e => {
 };
 
 // ---------- синхронизация ----------
-const SYNC_KEY = "salary-sync-v1";
-let sync = {};
-try { sync = JSON.parse(localStorage.getItem(SYNC_KEY)) || {}; } catch (e) {}
-const canSync = location.protocol.startsWith("http");
 let syncTimer = null, syncing = false, syncAgain = false;
-
-function saveSync() { try { localStorage.setItem(SYNC_KEY, JSON.stringify(sync)); } catch (e) {} }
 function setStatus(t) { document.getElementById("syncStatus").textContent = t; }
-function scheduleSync() { if (!sync.password) return; clearTimeout(syncTimer); syncTimer = setTimeout(doSync, 800); }
+function scheduleSync() { if (!auth) return; clearTimeout(syncTimer); syncTimer = setTimeout(doSync, 800); }
 
 // По каждой неделе и по блоку долгов берём ту версию, что изменена позже
 function merge(local, remote) {
@@ -745,26 +774,29 @@ function merge(local, remote) {
     out.weeks[k] = pick;
   }
   const a = local.debts, b = remote.debts;
-  // при равенстве (например, оба — начальные данные) берём серверную версию
+  // при равенстве берём серверную версию
   out.debts = !b ? a : (a.updatedAt || 0) > (b.updatedAt || 0) ? a : b;
   if (out.debts !== a && JSON.stringify(out.debts) !== JSON.stringify(a)) fromServer = true;
   return { merged: out, fromServer };
 }
-async function api(method, body) {
-  const r = await fetch("api/data", { method, headers: { "Content-Type": "application/json", "x-password": sync.password },
-    body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
-  if (r.status === 401) throw new Error("auth");
-  if (r.status !== 200 && r.status !== 409) throw new Error("http " + r.status);
-  return { status: r.status, json: await r.json() };
+async function request(method, url, body, withAuth) {
+  const headers = { "Content-Type": "application/json" };
+  if (withAuth !== false && auth) headers.Authorization = "Bearer " + auth.token;
+  const r = await fetch(url, { method, headers, body: body ? JSON.stringify(body) : undefined, cache: "no-store" });
+  let json = {}; try { json = await r.json(); } catch (e) {}
+  return { status: r.status, json };
 }
 async function doSync() {
-  if (!sync.password || !canSync) return;
+  if (!auth) return;
   if (syncing) { syncAgain = true; return; }
   syncing = true; setStatus("синхронизация…");
   try {
-    let server = (await api("GET")).json, changed = false;
+    let g = await request("GET", "api/data");
+    if (g.status === 401) throw new Error("auth");
+    if (g.status !== 200) throw new Error("http");
+    let server = g.json, changed = false;
     for (let i = 0; i < 5; i++) {
-      const m = merge(data, server.data);
+      const m = merge(data, server.data || { weeks: {} });
       if (m.fromServer) changed = true;
       data = m.merged;
       const before = JSON.stringify(data.debts);
@@ -772,37 +804,238 @@ async function doSync() {
       if (JSON.stringify(data.debts) !== before) data.debts.updatedAt = Date.now();
       prune(); store();
       if (JSON.stringify(data) === JSON.stringify(server.data)) break;
-      const r = await api("PUT", { baseRev: server.rev, data });
+      const r = await request("PUT", "api/data", { baseRev: server.rev, data });
+      if (r.status === 401) throw new Error("auth");
       if (r.status === 200) break;
+      if (r.status !== 409) throw new Error("http");
       server = r.json; // конфликт — сливаем ещё раз
     }
     if (changed) { render(); renderDebts(); } // перерисовываем, только если пришли изменения с другого устройства
     setStatus("✓ " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
-    if (e.message === "auth") { setStatus("неверный пароль"); sync.password = ""; saveSync(); showSync(); }
-    else setStatus("нет связи, данные сохранены на устройстве");
+    if (e.message === "auth") { syncing = false; alert("Сессия закончилась, войди заново"); logout(true); return; }
+    setStatus("нет связи, данные сохранены на устройстве");
   }
   syncing = false;
   if (syncAgain) { syncAgain = false; doSync(); }
 }
-function showSync() {
-  document.getElementById("syncForm").hidden = !!sync.password;
-  document.getElementById("syncOnBox").hidden = !sync.password;
-  if (!canSync) setStatus("доступно только на сайте");
-}
-document.getElementById("syncOn").onclick = () => {
-  const v = document.getElementById("syncPass").value.trim(); if (!v) return;
-  sync.password = v; saveSync(); showSync(); doSync();
-};
-document.getElementById("syncOff").onclick = () => { sync.password = ""; saveSync(); showSync(); setStatus("выключена"); };
 document.getElementById("syncNow").onclick = doSync;
-document.addEventListener("visibilitychange", () => { if (!document.hidden) doSync(); });
 window.addEventListener("online", doSync);
 
-// ---------- старт ----------
-{ const before = JSON.stringify(data.debts); migrateAdvances(); if (JSON.stringify(data.debts) !== before && data.debts.updatedAt) data.debts.updatedAt = Date.now(); }
-prune(); store();
-showTab(tab); render(); renderDebts(); showSync(); doSync();
+// ---------- экраны ----------
+function showView(v) {
+  for (const id of ["authView", "lockView", "appView"]) document.getElementById(id).hidden = id !== v;
+}
+
+// ---------- вход и регистрация ----------
+const AUTH_KEY = "salary-auth";
+let authMode = "login";
+function setAuthMode(m) {
+  authMode = m;
+  document.getElementById("authLoginTab").className = m === "login" ? "on" : "";
+  document.getElementById("authRegTab").className = m === "reg" ? "on" : "";
+  document.getElementById("authRegExtra").hidden = m !== "reg";
+  document.getElementById("authGo").textContent = m === "login" ? "Войти" : "Зарегистрироваться";
+  document.getElementById("authPass").autocomplete = m === "login" ? "current-password" : "new-password";
+  document.getElementById("authErr").textContent = "";
+  // пароль старой синхронизации, если он был сохранён на этом устройстве
+  try { const old = JSON.parse(localStorage.getItem("salary-sync-v1") || "{}"); if (old.password) document.getElementById("authLegacy").value = old.password; } catch (e) {}
+}
+document.getElementById("authLoginTab").onclick = () => setAuthMode("login");
+document.getElementById("authRegTab").onclick = () => setAuthMode("reg");
+document.getElementById("authGo").onclick = async () => {
+  const err = document.getElementById("authErr");
+  const login = document.getElementById("authLogin").value.trim(), password = document.getElementById("authPass").value;
+  const temp = document.getElementById("authTemp").checked;
+  if (!login || !password) { err.textContent = "Введи логин и пароль"; return; }
+  const body = { login, password, temp };
+  if (authMode === "reg") {
+    if (password !== document.getElementById("authPass2").value) { err.textContent = "Пароли не совпадают"; return; }
+    body.legacyPassword = document.getElementById("authLegacy").value;
+  }
+  err.textContent = "…";
+  let r;
+  try { r = await request("POST", authMode === "login" ? "api/login" : "api/register", body, false); }
+  catch (e) { err.textContent = "Нет связи с сервером"; return; }
+  if (r.status !== 200) { err.textContent = r.json.error || "Ошибка"; return; }
+  err.textContent = "";
+  document.getElementById("authPass").value = document.getElementById("authPass2").value = "";
+  auth = { token: r.json.token, login: r.json.login, temp };
+  (temp ? sessionStorage : localStorage).setItem(AUTH_KEY, JSON.stringify(auth));
+  loadLocal();
+  if (!temp) adoptLegacyLocal();
+  if (r.json.migrated) alert("Старые данные перенесены в аккаунт");
+  openApp();
+};
+// старые данные с этого устройства (до аккаунтов) добавляем в аккаунт и удаляем
+function adoptLegacyLocal() {
+  try {
+    const old = JSON.parse(localStorage.getItem("salary-data-v1") || "null");
+    if (old && old.weeks) {
+      for (const [k, w] of Object.entries(old.weeks)) if (!data.weeks[k] || (w.updatedAt || 0) > (data.weeks[k].updatedAt || 0)) data.weeks[k] = w;
+      if (old.debts && (old.debts.updatedAt || 0) > (data.debts.updatedAt || 0)) data.debts = old.debts;
+      store();
+    }
+    localStorage.removeItem("salary-data-v1"); localStorage.removeItem("salary-sync-v1");
+  } catch (e) {}
+}
+async function logout(skipServer) {
+  if (auth && !skipServer) { try { await request("POST", "api/logout"); } catch (e) {} }
+  if (auth) { try { stash().removeItem(dataKey()); localStorage.removeItem(lockKey()); } catch (e) {} }
+  try { localStorage.removeItem(AUTH_KEY); sessionStorage.removeItem(AUTH_KEY); } catch (e) {}
+  auth = null; data = { weeks: {}, debts: emptyDebts() };
+  setAuthMode("login"); showView("authView");
+}
+document.getElementById("logoutBtn").onclick = () => { if (confirm("Выйти из аккаунта? Данные на этом устройстве удалятся, на сервере останутся.")) logout(); };
+
+// смена пароля
+document.getElementById("passBtn").onclick = () => {
+  const box = document.getElementById("passForm"); box.innerHTML = "";
+  const o = el("input", { type: "password", autocomplete: "current-password" }), n1 = el("input", { type: "password", autocomplete: "new-password" }),
+        n2 = el("input", { type: "password", autocomplete: "new-password" }), err = el("div", { class: "err" });
+  box.append(el("div", { class: "form stack" }, field("Старый пароль", o), field("Новый пароль", n1), field("Новый ещё раз", n2), err,
+    el("div", { class: "actions" },
+      el("button", { textContent: "Сохранить", onclick: async () => {
+        if (n1.value !== n2.value) { err.textContent = "Пароли не совпадают"; return; }
+        const r = await request("POST", "api/password", { old: o.value, new: n1.value });
+        if (r.status !== 200) { err.textContent = r.json.error || "Ошибка"; return; }
+        box.innerHTML = ""; alert("Пароль изменён. На других устройствах нужно войти заново.");
+      } }),
+      el("button", { class: "ghost", textContent: "Отмена", onclick: () => box.innerHTML = "" }))));
+};
+
+// ---------- код-пароль и Face ID ----------
+// Это блокировка экрана на этом устройстве. Хранится только здесь, на сервер не уходит.
+const LOCK_AFTER_MIN = 5, MAX_FAILS = 5;
+function lockKey() { return "salary-lock:" + auth.login.toLowerCase(); }
+function lockCfg() { try { return JSON.parse(localStorage.getItem(lockKey())) || {}; } catch (e) { return {}; } }
+function setLockCfg(c) { try { localStorage.setItem(lockKey(), JSON.stringify(c)); } catch (e) {} }
+const b64 = buf => btoa(String.fromCharCode(...new Uint8Array(buf)));
+const unb64 = s => Uint8Array.from(atob(s), c => c.charCodeAt(0));
+async function pinHash(pin, salt) {
+  const key = await crypto.subtle.importKey("raw", new TextEncoder().encode(pin), "PBKDF2", false, ["deriveBits"]);
+  return b64(await crypto.subtle.deriveBits({ name: "PBKDF2", salt: unb64(salt), iterations: 150000, hash: "SHA-256" }, key, 256));
+}
+const faceSupported = () => !!(window.PublicKeyCredential && navigator.credentials && window.isSecureContext);
+
+let lockMode = "unlock", pinBuf = "", firstPin = "";
+function showLock(mode) {
+  lockMode = mode; pinBuf = ""; firstPin = "";
+  document.getElementById("lockTitle").textContent = mode === "unlock" ? "Введи код" : "Придумай код из 4 цифр";
+  document.getElementById("lockErr").textContent = "";
+  document.getElementById("lockFace").hidden = !(mode === "unlock" && lockCfg().cred && faceSupported());
+  document.getElementById("lockLogout").textContent = mode === "unlock" ? "Выйти из аккаунта" : "Отмена";
+  drawDots(); showView("lockView");
+  if (mode === "unlock" && lockCfg().cred && faceSupported()) faceUnlock(true);
+}
+function drawDots() {
+  document.querySelectorAll("#lockDots span").forEach((d, i) => d.className = i < pinBuf.length ? "on" : "");
+}
+async function pinKey(k) {
+  if (k === "⌫") { pinBuf = pinBuf.slice(0, -1); drawDots(); return; }
+  if (pinBuf.length >= 4) return;
+  pinBuf += k; drawDots();
+  if (pinBuf.length < 4) return;
+  const pin = pinBuf; pinBuf = "";
+  setTimeout(drawDots, 150);
+  const err = document.getElementById("lockErr");
+  if (lockMode === "unlock") {
+    const c = lockCfg();
+    if (await pinHash(pin, c.salt) === c.hash) { c.fails = 0; setLockCfg(c); openApp(true); return; }
+    c.fails = (c.fails || 0) + 1; setLockCfg(c);
+    if (c.fails >= MAX_FAILS) { alert("Слишком много попыток. Войди по логину и паролю."); logout(); return; }
+    err.textContent = "Неверный код, осталось попыток: " + (MAX_FAILS - c.fails);
+  } else if (lockMode === "set1") {
+    firstPin = pin; lockMode = "set2"; document.getElementById("lockTitle").textContent = "Повтори код"; err.textContent = "";
+  } else if (lockMode === "set2") {
+    if (pin !== firstPin) { lockMode = "set1"; document.getElementById("lockTitle").textContent = "Придумай код из 4 цифр"; err.textContent = "Коды не совпали, ещё раз"; return; }
+    const salt = b64(crypto.getRandomValues(new Uint8Array(16)));
+    const c = lockCfg(); c.salt = salt; c.hash = await pinHash(pin, salt); c.fails = 0; setLockCfg(c);
+    openApp(true);
+  }
+}
+// клавиатура
+{
+  const kp = document.getElementById("keypad");
+  for (const k of ["1","2","3","4","5","6","7","8","9","","0","⌫"]) {
+    if (!k) { kp.append(el("span")); continue; }
+    kp.append(el("button", { textContent: k, className: k === "⌫" ? "txt" : "", onclick: () => pinKey(k) }));
+  }
+  document.addEventListener("keydown", e => {
+    if (document.getElementById("lockView").hidden) return;
+    if (/^[0-9]$/.test(e.key)) pinKey(e.key); else if (e.key === "Backspace") pinKey("⌫");
+  });
+}
+document.getElementById("lockLogout").onclick = () => {
+  if (lockMode !== "unlock") { openApp(true); return; }
+  if (confirm("Выйти из аккаунта? Потом войдёшь по логину и паролю.")) logout();
+};
+
+async function faceEnable() {
+  try {
+    const cred = await navigator.credentials.create({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      rp: { name: "Зарплата" },
+      user: { id: crypto.getRandomValues(new Uint8Array(16)), name: auth.login, displayName: auth.login },
+      pubKeyCredParams: [{ type: "public-key", alg: -7 }, { type: "public-key", alg: -257 }],
+      authenticatorSelection: { authenticatorAttachment: "platform", userVerification: "required", residentKey: "discouraged" },
+      timeout: 60000 } });
+    const c = lockCfg(); c.cred = b64(cred.rawId); setLockCfg(c);
+    renderAccount();
+  } catch (e) { alert("Не получилось включить Face ID: " + (e.message || e.name)); }
+}
+async function faceUnlock(silent) {
+  try {
+    await navigator.credentials.get({ publicKey: {
+      challenge: crypto.getRandomValues(new Uint8Array(32)),
+      allowCredentials: [{ type: "public-key", id: unb64(lockCfg().cred) }],
+      userVerification: "required", timeout: 60000 } });
+    const c = lockCfg(); c.fails = 0; setLockCfg(c);
+    openApp(true);
+  } catch (e) { if (!silent) document.getElementById("lockErr").textContent = "Face ID не сработал, введи код"; }
+}
+document.getElementById("lockFace").onclick = () => faceUnlock(false);
+
+function renderAccount() {
+  if (!auth) return;
+  document.getElementById("accLogin").textContent = auth.login + (auth.temp ? " (чужое устройство)" : "");
+  document.getElementById("accSecurity").hidden = auth.temp;
+  const c = lockCfg(), pinOn = !!c.hash, faceOn = !!c.cred;
+  document.getElementById("pinState").textContent = pinOn ? "включён" : "выключен";
+  document.getElementById("faceState").textContent = !faceSupported() ? "не поддерживается" : faceOn ? "включён" : "выключен";
+  const pinBtn = document.getElementById("pinBtn"), faceBtn = document.getElementById("faceBtn");
+  pinBtn.hidden = auth.temp; faceBtn.hidden = auth.temp || !pinOn || !faceSupported();
+  pinBtn.textContent = pinOn ? "Убрать код" : "Поставить код";
+  faceBtn.textContent = faceOn ? "Выключить Face ID" : "Включить Face ID";
+}
+document.getElementById("pinBtn").onclick = () => {
+  if (lockCfg().hash) { if (confirm("Убрать код-пароль? Face ID тоже выключится.")) { setLockCfg({}); renderAccount(); } }
+  else showLock("set1");
+};
+document.getElementById("faceBtn").onclick = () => {
+  const c = lockCfg();
+  if (c.cred) { delete c.cred; setLockCfg(c); renderAccount(); } else faceEnable();
+};
+
+// блокировка, если приложение было свёрнуто дольше LOCK_AFTER_MIN минут
+let hiddenAt = 0;
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (!auth) return;
+  if (!auth.temp && lockCfg().hash && document.getElementById("lockView").hidden && Date.now() - hiddenAt > LOCK_AFTER_MIN * 60e3) showLock("unlock");
+  else doSync();
+});
+
+// ---------- запуск ----------
+function openApp(unlocked) {
+  if (!unlocked && !auth.temp && lockCfg().hash) { showLock("unlock"); return; }
+  showView("appView");
+  { const before = JSON.stringify(data.debts); migrateAdvances(); if (JSON.stringify(data.debts) !== before && data.debts.updatedAt) data.debts.updatedAt = Date.now(); }
+  prune(); store();
+  showTab(tab); render(); renderDebts(); renderAccount(); doSync();
+}
+try { auth = JSON.parse(sessionStorage.getItem(AUTH_KEY) || localStorage.getItem(AUTH_KEY) || "null"); } catch (e) { auth = null; }
+if (auth && auth.token) { loadLocal(); openApp(); } else { auth = null; setAuthMode("login"); showView("authView"); }
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("sw.js").catch(() => {});
 </script>
 </body>
