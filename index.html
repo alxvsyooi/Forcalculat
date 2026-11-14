@@ -651,12 +651,14 @@ function renderDebts() {
     for (const it of b.items.sort(itemOrder)) {
       const left = Math.max(0, it.amount - paid[it.id]);
       const g = el("div", { class: "grid" },
-        field("Что", el("input", { type: "text", value: it.title, onchange: e => { it.title = e.target.value || "Долг"; saveDebts(); renderDebts(); } })),
+        field("Что", el("input", { type: "text", value: it.title, oninput: e => { it.title = e.target.value || "Долг"; saveDebts(); }, onchange: () => renderDebts() })),
         field("Сумма, " + CUR[p.currency], numInput(it.amount, "0", null)),
         field("Взял", dateInput(it.date, v => { if (v) { it.date = v; saveDebts(); } })),
         field("Срок", dateInput(it.due, v => { it.due = v; saveDebts(); renderDebts(); })));
       const amt = g.querySelectorAll("input")[1];
-      amt.onchange = () => { it.amount = Number(amt.value) || 0; saveDebts(); renderDebts(); render(); };
+      // сохраняем сразу при вводе, перерисовываем список — когда поле отпущено
+      amt.oninput = () => { it.amount = Number(amt.value) || 0; saveDebts(); render(); };
+      amt.onchange = () => renderDebts();
       g.style.marginTop = "6px";
       inner.append(el("div", { class: "item" },
         el("div", { class: "row" }, el("span", { html: left > 0 ? "Осталось <b>" + money(left, p.currency) + "</b>" : "<span class='done'>закрыт ✓</span>" }),
@@ -735,7 +737,7 @@ function renderPlan(paid) {
   }
   if (late) box.prepend(el("div", { class: "minus", style: "margin-bottom:6px", textContent: "Не успеваешь по срокам: " + late }));
 }
-document.getElementById("planSalary").onchange = e => { D().planSalary = Math.max(0, +e.target.value || 0); saveDebts(); renderDebts(); };
+document.getElementById("planSalary").oninput = e => { D().planSalary = Math.max(0, +e.target.value || 0); saveDebts(); renderDebts(); };
 
 // форма нового долга
 function debtForm(box, personId) {
@@ -776,9 +778,9 @@ function debtForm(box, personId) {
   draw(); box.append(f);
 }
 document.getElementById("addDebt").onclick = () => debtForm(document.getElementById("addDebtForm"));
-document.getElementById("rateRUB").onchange = e => { if (+e.target.value > 0) { D().rates.RUB = +e.target.value; saveDebts(); renderDebts(); } };
-document.getElementById("rateUSD").onchange = e => { if (+e.target.value > 0) { D().rates.USD = +e.target.value; saveDebts(); renderDebts(); } };
-document.getElementById("foodSet").onchange = e => { D().food = Math.max(0, +e.target.value || 0); saveDebts(); render(); };
+document.getElementById("rateRUB").oninput = e => { if (+e.target.value > 0) { D().rates.RUB = +e.target.value; saveDebts(); renderDebts(); } };
+document.getElementById("rateUSD").oninput = e => { if (+e.target.value > 0) { D().rates.USD = +e.target.value; saveDebts(); renderDebts(); } };
+document.getElementById("foodSet").oninput = e => { D().food = Math.max(0, +e.target.value || 0); saveDebts(); render(); renderDebts(); };
 
 // ---------- вкладки ----------
 let tab = "salary";
@@ -1096,7 +1098,7 @@ document.getElementById("faceBtn").onclick = () => {
 // блокировка, если приложение было свёрнуто дольше LOCK_AFTER_MIN минут
 let hiddenAt = 0;
 document.addEventListener("visibilitychange", () => {
-  if (document.hidden) { hiddenAt = Date.now(); return; }
+  if (document.hidden) { hiddenAt = Date.now(); if (auth) { clearTimeout(syncTimer); doSync(); } return; }
   if (!auth) return;
   if (!auth.temp && lockCfg().hash && document.getElementById("lockView").hidden && Date.now() - hiddenAt > LOCK_AFTER_MIN * 60e3) showLock("unlock");
   else doSync();

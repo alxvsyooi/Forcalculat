@@ -176,17 +176,16 @@ const APP_ORIGINS = ["capacitor://localhost", "https://localhost", "http://local
 
 http.createServer((req, res) => {
   const url = req.url.split("?")[0];
-  if (url.startsWith("/api/")) {
-    const origin = req.headers.origin;
-    if (APP_ORIGINS.includes(origin)) {
-      res.setHeader("Access-Control-Allow-Origin", origin);
-      res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
-      res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS");
-      res.setHeader("Vary", "Origin");
-    }
-    if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
-    return api(req, res, url);
+  // приложение скачивает свежую страницу и обращается к API — для него разрешаем CORS
+  const origin = req.headers.origin;
+  if (APP_ORIGINS.includes(origin)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Methods", "GET, PUT, POST, OPTIONS");
+    res.setHeader("Vary", "Origin");
   }
+  if (req.method === "OPTIONS") { res.writeHead(204); return res.end(); }
+  if (url.startsWith("/api/")) return api(req, res, url);
 
   const file = STATIC[url];
   if (req.method !== "GET" || !file) { res.writeHead(404); return res.end("Not found"); }
