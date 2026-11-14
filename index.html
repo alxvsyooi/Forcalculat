@@ -158,6 +158,16 @@
   </div>
 
   <div class="card">
+    <h2>Пересчёт</h2>
+    <div class="grid">
+      <div><label>ЗП в неделю, ₸</label><input type="number" inputmode="numeric" id="planSalary" placeholder="например 108100"></div>
+      <div><label>На долги в неделю</label><div id="planBudget" style="padding-top:10px; font-weight:600">—</div></div>
+    </div>
+    <div class="muted" style="margin-top:6px">Из ЗП вычитается еда и дорога (в настройках), остальное — на долги по порядку сроков. Выплата по понедельникам.</div>
+    <div id="planResult" style="margin-top:10px"></div>
+  </div>
+
+  <div class="card">
     <h2>Сроки</h2>
     <div id="dueList"></div>
   </div>
@@ -611,6 +621,8 @@ function renderDebts() {
       dm(addDays(today(), weeks * 7)) + "." + parse(addDays(today(), weeks * 7)).getFullYear() + "</b> (≈ " + weeks + " нед.)";
   }
 
+  renderPlan(paid);
+
   // сроки
   const due = document.getElementById("dueList"); due.innerHTML = "";
   const open = d.items.filter(i => i.due && i.amount - paid[i.id] > 0).sort(itemOrder);
@@ -679,6 +691,51 @@ function renderDebts() {
   const fi = document.getElementById("foodSet"); if (document.activeElement !== fi) fi.value = d.food;
 }
 const openPeople = new Set();
+
+// ---------- пересчёт: если каждую неделю получаешь planSalary ----------
+function fullDate(s) { return dm(s) + "." + parse(s).getFullYear(); }
+function renderPlan(paid) {
+  const d = D(), box = document.getElementById("planResult");
+  const inp = document.getElementById("planSalary");
+  if (document.activeElement !== inp) inp.value = d.planSalary || "";
+  const budget = (d.planSalary || 0) - (d.food || 0);
+  document.getElementById("planBudget").textContent = d.planSalary ? money(budget) : "—";
+  box.innerHTML = "";
+  if (!d.planSalary) { box.innerHTML = "<span class='muted'>Введи ЗП, чтобы посчитать.</span>"; return; }
+  if (budget <= 0) { box.innerHTML = "<span class='minus'>ЗП не больше расходов на еду и дорогу — на долги ничего не остаётся.</span>"; return; }
+  // открытые долги в тенге, по порядку сроков
+  const queue = d.items.filter(i => person(i.personId) && i.amount - paid[i.id] > 0).sort(itemOrder)
+    .map(i => ({ it: i, p: person(i.personId), left: toKZT(i.amount - paid[i.id], person(i.personId).currency) }));
+  if (!queue.length) { box.innerHTML = "<b class='done'>Долгов нет ✓</b>"; return; }
+  // первая выплата — ближайший понедельник (сегодня, если сегодня понедельник)
+  let pay = mondayOf(today()); if (pay < today()) pay = addDays(pay, 7);
+  let weeks = 0, q = 0;
+  while (q < queue.length && weeks < 520) {
+    weeks++;
+    let money_ = budget;
+    while (q < queue.length && money_ > 0) {
+      const t = Math.min(money_, queue[q].left);
+      queue[q].left -= t; money_ -= t;
+      if (queue[q].left <= 0.5) { queue[q].closed = pay; q++; }
+    }
+    if (q < queue.length) pay = addDays(pay, 7);
+  }
+  const last = queue[queue.length - 1].closed;
+  box.append(el("div", { html: "Всё закроешь к <b>" + (last ? fullDate(last) : "—") + "</b> (" + weeks + " нед.)" }));
+  let late = 0;
+  for (const x of queue) {
+    const lateDays = x.it.due && x.closed ? Math.round((parse(x.closed) - parse(x.it.due)) / 864e5) : 0;
+    if (lateDays > 0) late++;
+    const status = !x.it.due ? "<span class='muted'>без срока</span>"
+      : lateDays > 0 ? "<span class='minus'>позже срока на " + lateDays + " дн. (срок " + dm(x.it.due) + ")</span>"
+      : "<span class='done'>успеваешь (срок " + dm(x.it.due) + ")</span>";
+    box.append(el("div", { class: "line" },
+      el("span", { html: "<b>" + x.p.name + "</b>" + (x.it.title !== "Долг" ? " <span class='muted'>" + x.it.title + "</span>" : "") }),
+      el("span", { style: "text-align:right", html: (x.closed ? fullDate(x.closed) : "—") + "<br><span style='font-size:13px'>" + status + "</span>" })));
+  }
+  if (late) box.prepend(el("div", { class: "minus", style: "margin-bottom:6px", textContent: "Не успеваешь по срокам: " + late }));
+}
+document.getElementById("planSalary").onchange = e => { D().planSalary = Math.max(0, +e.target.value || 0); saveDebts(); renderDebts(); };
 
 // форма нового долга
 function debtForm(box, personId) {
