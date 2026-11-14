@@ -11,9 +11,12 @@
 <meta name="theme-color" content="#1f6feb">
 <style>
   :root { --bg:#f4f5f7; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1f6feb; --red:#d93025; --green:#188038; --border:#e2e4e8; --orange:#c26401; }
+  /* тема: как в системе, или выбранная вручную в «Вид» */
   @media (prefers-color-scheme: dark) {
-    :root { --bg:#111317; --card:#1c1f25; --text:#e8eaed; --muted:#9aa0a6; --accent:#4c8dff; --red:#ff6b6b; --green:#4cd07d; --border:#2d313a; --orange:#ffa94d; }
+    :root:not([data-theme="light"]) { --bg:#111317; --card:#1c1f25; --text:#e8eaed; --muted:#9aa0a6; --accent:#4c8dff; --red:#ff6b6b; --green:#4cd07d; --border:#2d313a; --orange:#ffa94d; color-scheme:dark; }
   }
+  :root[data-theme="dark"] { --bg:#111317; --card:#1c1f25; --text:#e8eaed; --muted:#9aa0a6; --accent:#4c8dff; --red:#ff6b6b; --green:#4cd07d; --border:#2d313a; --orange:#ffa94d; color-scheme:dark; }
+  :root[data-theme="light"] { color-scheme:light; }
   * { box-sizing:border-box; }
   body { margin:0; font-family:-apple-system,system-ui,Roboto,sans-serif; background:var(--bg); color:var(--text);
          padding:calc(16px + env(safe-area-inset-top)) 16px calc(24px + env(safe-area-inset-bottom)); max-width:600px; margin-inline:auto; }
@@ -204,6 +207,17 @@
 
 <!-- ================= ОБЩЕЕ ================= -->
 <div class="card">
+  <h2>Вид</h2>
+  <div class="grid">
+    <div><label>Тема</label><select id="viewTheme"><option value="auto">Как в системе</option><option value="light">Светлая</option><option value="dark">Тёмная</option></select></div>
+    <div><label>Масштаб</label><select id="viewScale">
+      <option value="0.7">70%</option><option value="0.8">80%</option><option value="0.85">85%</option><option value="0.9">90%</option>
+      <option value="1">100%</option><option value="1.1">110%</option><option value="1.2">120%</option></select></div>
+  </div>
+  <div class="muted" style="margin-top:6px">Настройки вида — для этого устройства.</div>
+</div>
+
+<div class="card">
   <div class="row"><h2>Аккаунт</h2><span class="muted" id="syncStatus"></span></div>
   <div class="line"><span>Логин</span><b id="accLogin"></b></div>
   <div id="accSecurity">
@@ -232,6 +246,27 @@
 </div><!-- appView -->
 
 <script>
+// ---------- вид: тема и масштаб (на этом устройстве) ----------
+const VIEW_KEY = "salary-view";
+function viewCfg() { try { return JSON.parse(localStorage.getItem(VIEW_KEY)) || {}; } catch (e) { return {}; } }
+function applyView() {
+  const v = viewCfg();
+  const root = document.documentElement;
+  if (v.theme === "light" || v.theme === "dark") root.setAttribute("data-theme", v.theme); else root.removeAttribute("data-theme");
+  document.body.style.zoom = v.scale && v.scale !== 1 ? v.scale : "";
+  const dark = v.theme === "dark" || (v.theme !== "light" && matchMedia("(prefers-color-scheme: dark)").matches);
+  const tc = document.querySelector('meta[name="theme-color"]'); if (tc) tc.content = dark ? "#111317" : "#1f6feb";
+}
+function setView(k, val) { const v = viewCfg(); v[k] = val; try { localStorage.setItem(VIEW_KEY, JSON.stringify(v)); } catch (e) {} applyView(); }
+applyView();
+{
+  const v = viewCfg();
+  const th = document.getElementById("viewTheme"), sc = document.getElementById("viewScale");
+  th.value = v.theme || "auto"; sc.value = String(v.scale || 1);
+  th.onchange = () => setView("theme", th.value);
+  sc.onchange = () => setView("scale", Number(sc.value));
+}
+
 const POINTS = ["БЦА", "ДАМУ", "АРУЖАН", "ЖИБЕК", "ТУРАН"];
 const PERCENT = 0.20;
 const MIN_SALES = 35000;
@@ -853,6 +888,11 @@ function renderPlanWeeks() {
   const ae = document.activeElement;
   if (ae && ae.tagName === "INPUT" && document.getElementById("planWeeks").contains(ae)) { renderPlanSums(); return; }
   const box = document.getElementById("planWeeks"); box.innerHTML = "";
+  if (!d.planSalary) {
+    box.append(el("div", { class: "card muted", textContent: "Введи среднюю ЗП выше — появятся недели плана." }));
+    document.getElementById("planSummary").innerHTML = "<span class='muted'>Нет плана</span>";
+    return;
+  }
   const plan = computePlan();
   plan.weeks.forEach((W, idx) => {
     const det = el("details", { class: "card" });
@@ -909,6 +949,8 @@ function renderPlanWeeks() {
 
 // обновляет только цифры (без пересоздания полей ввода)
 function renderPlanSums(plan) {
+  if (!D().planSalary) { if (document.getElementById("planWeeks").childElementCount !== 1 || document.querySelector("[data-sums]")) renderPlanWeeks(); return; }
+  if (!document.querySelector("[data-sums]")) { renderPlanWeeks(); return; }
   plan = plan || computePlan();
   const d = D();
   for (const W of plan.weeks) {
