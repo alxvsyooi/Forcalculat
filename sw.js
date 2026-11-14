@@ -1,5 +1,5 @@
 // Кэш для работы без интернета (запросы синхронизации не кэшируются)
-const CACHE = "salary-v8";
+const CACHE = "salary-v9";
 const FILES = ["./", "index.html", "manifest.json", "icon-192.png", "icon-512.png"];
 self.addEventListener("install", e => { self.skipWaiting(); e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES))); });
 self.addEventListener("activate", e => e.waitUntil(
