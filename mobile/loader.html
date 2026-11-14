@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Зарплата</title>
+<style>
+  :root { --bg:#f4f5f7; --card:#fff; --text:#1c1e21; --muted:#6b7280; --accent:#1f6feb; --border:#e2e4e8; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --card:#1c1f25; --text:#e8eaed; --muted:#9aa0a6; --accent:#4c8dff; --border:#2d313a; } }
+  body { margin:0; font-family:-apple-system,system-ui,Roboto,sans-serif; background:var(--bg); color:var(--text);
+         min-height:100vh; display:flex; align-items:center; justify-content:center; padding:16px; box-sizing:border-box; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; max-width:340px; width:100%; text-align:center; }
+  p { font-size:17px; margin:0 0 8px; }
+  small { color:var(--muted); display:block; margin-bottom:16px; }
+  button { font:inherit; border:none; border-radius:8px; padding:12px; width:100%; background:var(--accent); color:#fff; margin-top:8px; }
+  button.ghost { background:transparent; color:var(--accent); border:1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="card" id="loading"><p>Загрузка…</p></div>
+<div class="card" id="offline" hidden>
+  <p>У вас нет интернета, открыть оффлайн?</p>
+  <small>*Все сохранения синхронизируются только после подключения к интернету</small>
+  <button id="openOffline">Открыть оффлайн</button>
+  <button class="ghost" id="retry">Повторить</button>
+</div>
+<script>
+// Загрузчик приложения: берёт свежую версию сайта с сервера и запоминает её.
+// Нет интернета — предлагает открыть последнюю сохранённую версию.
+(function () {
+  var SITE = "https://zarplata-production-0275.up.railway.app/index.html";
+  var KEY = "app-html";
+
+  function show(html) { document.open(); document.write(html); document.close(); }
+
+  function load() {
+    document.getElementById("loading").hidden = false;
+    document.getElementById("offline").hidden = true;
+    var ctrl = new AbortController();
+    var timer = setTimeout(function () { ctrl.abort(); }, 6000);
+    fetch(SITE + "?t=" + Date.now(), { cache: "no-store", signal: ctrl.signal })
+      .then(function (r) { if (!r.ok) throw new Error("http " + r.status); return r.text(); })
+      .then(function (html) {
+        clearTimeout(timer);
+        if (html.indexOf("<script>") < 0) throw new Error("bad page");
+        try { localStorage.setItem(KEY, html); } catch (e) {}
+        show(html);
+      })
+      .catch(function () {
+        clearTimeout(timer);
+        document.getElementById("loading").hidden = true;
+        document.getElementById("offline").hidden = false;
+      });
+  }
+
+  document.getElementById("openOffline").onclick = function () {
+    var html = null;
+    try { html = localStorage.getItem(KEY); } catch (e) {}
+    if (html) { show(html); return; }
+    // ещё ни разу не загружалось с сервера — открываем версию, встроенную в приложение
+    fetch("app.html").then(function (r) { return r.text(); }).then(show);
+  };
+  document.getElementById("retry").onclick = load;
+  load();
+})();
+</script>
+</body>
+</html>
