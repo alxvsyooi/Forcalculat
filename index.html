@@ -133,7 +133,7 @@
   <div class="card">
     <h2>Куда уходит зарплата</h2>
     <div id="spend"></div>
-    <div class="actions" style="margin-top:10px"><button id="payFromWeek">Отдать с этой зарплаты</button></div>
+    <div class="actions" style="margin-top:10px"><button id="payFromWeek">Отдать с этой зарплаты</button><button class="ghost" id="expFromWeek">+ Трата</button></div>
     <div id="payFromWeekForm"></div>
   </div>
 
@@ -475,9 +475,12 @@ function weekSummary(k) {
   let pay = 0, courier = 0, ded = 0;
   for (const r of Object.values(by)) { pay += r.pay; courier += r.courier; ded += r.ded; }
   const other = pays.filter(x => !x.deduction);
-  const spent = other.reduce((s, x) => s + (Number(x.kzt) || 0), 0);
+  // траты с этой зарплаты лежат в плане на понедельник выплаты (неделя + 7 дней)
+  const pw = D().plan && D().plan.weeks[addDays(k, 7)];
+  const expenses = pw ? (pw.lines || []).filter(l => l.kind === "expense") : [];
+  const spent = other.reduce((s, x) => s + (Number(x.kzt) || 0), 0) + expenses.reduce((s, l) => s + (Number(l.amount) || 0), 0);
   const payout = pay + courier - ded;
-  return { by, pay, courier, ded, payout, other, spent, food: D().food || 0, left: payout - (D().food || 0) - spent };
+  return { by, pay, courier, ded, payout, other, expenses, spent, food: D().food || 0, left: payout - (D().food || 0) - spent };
 }
 
 function renderTotals() {
@@ -504,6 +507,11 @@ function renderTotals() {
       el("span", {}, "−" + money(x.kzt), el("button", { class: "del small", textContent: "✕", onclick: () => {
         if (confirm("Удалить платёж?")) { D().payments = D().payments.filter(y => y !== x); saveDebts(); render(); renderDebts(); } } })));
     sp.append(row);
+  }
+  for (const l of S.expenses) {
+    sp.append(el("div", { class: "line" }, el("span", { textContent: (l.title || "Трата") + (l.done ? "" : " (план)") }),
+      el("span", {}, "−" + money(l.amount), el("button", { class: "del small", textContent: "✕", onclick: () => {
+        if (confirm("Удалить трату?")) { const w = planWeekEdit(addDays(week, 7)); w.lines = w.lines.filter(y => y !== l); saveDebts(); render(); renderDebts(); } } }))));
   }
   for (const x of weekPayments(week).filter(x => x.deduction)) {
     const p = person(x.personId) || { name: "?" };
@@ -582,6 +590,7 @@ document.getElementById("addAdv").onclick = () => {
   D().items.push({ id: uid(), personId: ensureBoss(point).id, title: "Аванс", amount: 0, date: defaultDate(), due: "", week, point, advance: true });
   saveDebts(); render();
 };
+document.getElementById("expFromWeek").onclick = () => expenseForm(document.getElementById("payFromWeekForm"), addDays(week, 7), () => { render(); renderDebts(); }, true);
 document.getElementById("payFromWeek").onclick = () => payForm(document.getElementById("payFromWeekForm"), { week });
 document.getElementById("prev").onclick = () => { week = addDays(week, -7); closeForms(); render(); };
 document.getElementById("next").onclick = () => { week = addDays(week, 7); closeForms(); render(); };
@@ -816,7 +825,7 @@ function recurFor(P) {
   }
   return out;
 }
-function lineKZT(l) { const p = person(l.personId); return p && p.currency === "RUB" ? (l.kzt || Math.round(l.amount * D().rates.RUB)) : l.amount; }
+function lineKZT(l) { if (l.kind === "expense") return Number(l.amount) || 0; const p = person(l.personId); return p && p.currency === "RUB" ? (l.kzt || Math.round(l.amount * D().rates.RUB)) : l.amount; }
 
 // Расчёт плана: остатки по неделям и сколько останется по каждому долгу
 function computePlan() {
@@ -834,8 +843,10 @@ function computePlan() {
       if (!st.done) recur += amount;
       return { ...x, amount, done: !!st.done };
     });
+    let exp = 0;
     for (const l of w.lines) {
       if (l.done) continue; // выполненные уже учтены как настоящие платежи
+      if (l.kind === "expense") { exp += lineKZT(l); continue; } // обычная трата, на долги не влияет
       debts += lineKZT(l);
       // уменьшаем остаток долга: конкретный долг или по порядку сроков
       let left = Number(l.amount) || 0;
@@ -844,9 +855,9 @@ function computePlan() {
     }
     const doneSpent = w.lines.filter(l => l.done).reduce((s, l) => s + lineKZT(l), 0) + recs.filter(x => x.done).reduce((s, x) => s + x.amount, 0);
     const start = carry;
-    const left = carry + salary - food - debts - recur - doneSpent;
+    const left = carry + salary - food - debts - recur - exp - doneSpent;
     carry = left;
-    return { P, w, salary, food, debts, recur, recs, doneSpent, start, left };
+    return { P, w, salary, food, debts, recur, exp, recs, doneSpent, start, left };
   });
   return { weeks, rem, closed };
 }
@@ -914,8 +925,17 @@ function renderPlanWeeks() {
           el("span", { html: x.r.title + " <span class='muted'>до " + dm(x.date) + "</span>" })),
         el("span", { class: x.done ? "done" : "", textContent: "−" + money(x.amount) })));
     }
+    // траты (галочка — потрачено)
+    for (const l of W.w.lines.filter(l => l.kind === "expense")) {
+      lines.append(el("div", { class: "line" },
+        el("label", { class: "check", style: "margin:0" }, el("input", { type: "checkbox", checked: !!l.done, onchange: e => {
+          l.done = e.target.checked; saveDebts(); renderPlanTab(); render(); } }), el("span", { textContent: l.title || "Трата" })),
+        el("span", { style: "display:flex; gap:4px; align-items:center" }, el("span", { class: l.done ? "done" : "", textContent: "−" + money(l.amount) }),
+          el("button", { class: "del small", textContent: "✕", onclick: () => {
+            const w = planWeekEdit(W.P); w.lines = w.lines.filter(y => y !== l); saveDebts(); renderPlanTab(); render(); } }))));
+    }
     // платежи по долгам
-    for (const l of W.w.lines) {
+    for (const l of W.w.lines.filter(l => l.kind !== "expense")) {
       const p = person(l.personId) || { name: "?", currency: "KZT" };
       const it = l.itemId && d.items.find(i => i.id === l.itemId);
       const txt = "<b>" + p.name + "</b>" + (it && it.title !== "Долг" ? " <span class='muted'>" + it.title + "</span>" : "") +
@@ -933,13 +953,14 @@ function renderPlanWeeks() {
           const w = planWeekEdit(W.P); w.lines = w.lines.filter(y => y !== l); saveDebts(); renderPlanTab(); } }));
       lines.append(el("div", { class: "line" }, el("span", { html: txt }), actions));
     }
-    if (!W.recs.length && !W.w.lines.length) lines.append(el("div", { class: "muted", textContent: "Платежей нет" }));
+    if (!W.recs.length && !W.w.lines.length) lines.append(el("div", { class: "muted", textContent: "Пока ничего не запланировано" }));
     inner.append(lines);
     // итоги недели
     const sums = el("div", { style: "margin-top:8px", "data-sums": W.P });
     inner.append(sums);
     const formBox = el("div");
     inner.append(el("div", { class: "actions", style: "margin-top:8px" },
+      el("button", { class: "ghost small", textContent: "+ Трата", onclick: () => expenseForm(formBox, W.P, () => { openPlanWeeks.add(W.P); renderPlanTab(); render(); }) }),
       el("button", { class: "ghost small", textContent: "+ Платёж по долгу", onclick: () => planLineForm(formBox, W.P) })), formBox);
     det.append(inner);
     box.append(det);
@@ -964,6 +985,7 @@ function renderPlanSums(plan) {
     line("ЗП", "+" + money(W.salary));
     line("Еда и дорога", "−" + money(W.food));
     if (W.recur) line("Ежемесячные", "−" + money(W.recur));
+    if (W.exp) line("Траты", "−" + money(W.exp));
     if (W.debts) line("Долги (план)", "−" + money(W.debts));
     if (W.doneSpent) line("Уже выполнено", "−" + money(W.doneSpent));
     line("Остаток", money(W.left), "total" + (W.left < 0 ? " minus" : ""));
@@ -984,6 +1006,24 @@ function renderPlanSums(plan) {
       el("span", { style: "text-align:right; font-size:14px", html: status })));
   }
   if (notCovered) sb.prepend(el("div", { class: "muted", style: "margin-bottom:6px", textContent: "Не закрыто планом: " + notCovered }));
+}
+
+// форма «+ Трата»: название и сумма; P — понедельник выплаты, с которой тратишь
+function expenseForm(box, P, after, done) {
+  box.innerHTML = "";
+  const st = { title: "", amount: null };
+  const f = el("div", { class: "form" });
+  f.append(el("div", { class: "grid" },
+    field("На что", el("input", { type: "text", placeholder: "например, телефон", oninput: e => st.title = e.target.value })),
+    field("Сумма, ₸", numInput(null, "0", v => st.amount = v))),
+    el("div", { class: "actions", style: "margin-top:10px" },
+      el("button", { textContent: "Добавить", onclick: () => {
+        if (!st.amount) { alert("Введи сумму"); return; }
+        planWeekEdit(P).lines.push({ id: uid(), kind: "expense", title: st.title.trim() || "Трата", amount: st.amount, done: !!done });
+        saveDebts(); box.innerHTML = ""; after();
+      } }),
+      el("button", { class: "ghost", textContent: "Отмена", onclick: () => box.innerHTML = "" })));
+  box.append(f);
 }
 
 // форма «+ Платёж по долгу» в неделе плана
@@ -1045,7 +1085,6 @@ document.getElementById("planAuto").onclick = () => {
   }
   saveDebts(); renderPlanTab(); renderDebts();
 };
-document.getElementById("planAvg").onchange = () => renderPlanTab();
 
 // ---------- вкладки ----------
 let tab = "salary";
