@@ -78,6 +78,31 @@
   .keypad { display:grid; grid-template-columns:repeat(3, 72px); gap:14px; justify-content:center; }
   .keypad button { height:72px; border-radius:50%; font-size:26px; background:var(--card); color:var(--text); border:1px solid var(--border); }
   .keypad button.txt { font-size:14px; border:none; background:transparent; color:var(--accent); }
+  /* шапка и меню */
+  body.app { padding:0; max-width:none; }
+  .top { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:10px; background:var(--card); border-bottom:1px solid var(--border);
+         padding:calc(8px + env(safe-area-inset-top)) 12px 8px; }
+  .top h1 { font-size:18px; margin:0; flex:1; }
+  .iconbtn { background:transparent; color:var(--text); font-size:22px; width:42px; height:42px; padding:0; position:relative; border-radius:10px; }
+  .badge { position:absolute; top:2px; right:0; background:var(--red); color:#fff; font-size:11px; font-weight:700; border-radius:9px; min-width:18px; height:18px;
+           display:flex; align-items:center; justify-content:center; padding:0 4px; }
+  .shade { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:30; }
+  .drawer { position:fixed; top:0; bottom:0; left:0; width:min(80vw, 320px); background:var(--card); z-index:31; transform:translateX(-105%);
+            transition:transform .2s ease; padding:calc(18px + env(safe-area-inset-top)) 0 18px; overflow-y:auto; box-shadow:2px 0 16px rgba(0,0,0,.25); }
+  .drawer.open { transform:none; }
+  .drawer .who { padding:0 20px 14px; border-bottom:1px solid var(--border); margin-bottom:8px; }
+  .drawer .who b { font-size:17px; }
+  .mi { display:flex; align-items:center; gap:14px; width:100%; text-align:left; padding:13px 20px; font-size:16px; background:transparent; color:var(--text); border-radius:0; }
+  .mi.on { background:color-mix(in srgb, var(--accent) 14%, transparent); color:var(--accent); font-weight:600; box-shadow:inset -3px 0 var(--accent); }
+  .mi .cnt { margin-left:auto; background:var(--red); color:#fff; font-size:12px; border-radius:10px; padding:1px 7px; }
+  .sep { border-top:1px solid var(--border); margin:8px 0; }
+  .content { max-width:600px; margin:0 auto; padding:12px 16px calc(24px + env(safe-area-inset-bottom)); }
+  .notif { display:flex; gap:12px; padding:12px 0; border-top:1px solid var(--border); cursor:pointer; }
+  .notif:first-child { border-top:none; }
+  .notif .dot { width:10px; height:10px; border-radius:50%; margin-top:6px; flex-shrink:0; background:var(--accent); }
+  .notif .dot.red { background:var(--red); } .notif .dot.orange { background:var(--orange); } .notif.read .dot { background:var(--border); }
+  .notif.read { opacity:.65; }
+  .shift summary { font-weight:400; }
 </style>
 </head>
 <body>
@@ -112,16 +137,38 @@
 </div>
 
 <div id="appView" hidden>
-<div class="tabs"><button id="tabSalary">Зарплата</button><button id="tabDebts">Долги</button></div>
+<!-- шапка -->
+<header class="top">
+  <button class="iconbtn" id="menuBtn" aria-label="Меню">☰</button>
+  <h1 id="secTitle">Зарплата</h1>
+  <button class="iconbtn" id="bellBtn" aria-label="Уведомления">🔔<span class="badge" id="bellBadge" hidden></span></button>
+</header>
 
-<!-- ================= ЗАРПЛАТА ================= -->
-<div id="salaryView">
+<!-- меню -->
+<div class="shade" id="shade" hidden></div>
+<nav class="drawer" id="drawer" aria-hidden="true">
+  <div class="who"><b id="drawerLogin"></b><div class="muted" id="drawerSync"></div></div>
+  <button class="mi" data-sec="salary">💰 Зарплата</button>
+  <button class="mi" data-sec="expenses">🧾 Расходы недели</button>
+  <button class="mi" data-sec="debts">📉 Долги</button>
+  <button class="mi" data-sec="plan">🗓 План</button>
+  <div class="sep"></div>
+  <button class="mi" data-sec="notifications">🔔 Уведомления <span class="cnt" id="menuBadge" hidden></span></button>
+  <button class="mi" data-sec="settings">⚙️ Настройки</button>
+</nav>
+
+<main class="content">
+<!-- неделя: общая для «Зарплаты» и «Расходов недели» -->
+<div id="weekBox">
   <div class="card weeknav">
     <button class="ghost" id="prev">‹</button>
     <div class="title"><div id="weekTitle"></div><div class="sub" id="payday"></div></div>
     <button class="ghost" id="next">›</button>
   </div>
+</div>
 
+<!-- ================= ЗАРПЛАТА ================= -->
+<section id="sec-salary" class="sec">
   <div class="card">
     <h2>Итого к выплате</h2>
     <div class="big" id="total">0 ₸</div>
@@ -129,28 +176,29 @@
     <div class="tablewrap"><table id="byPoint"></table></div>
     <div class="actions" style="margin-top:12px"><button id="copyReport">Скопировать отчёт</button></div>
   </div>
+  <div class="card">
+    <div class="row"><h2>Смены</h2><button id="addShift">+ Смена</button></div>
+    <div id="shifts"></div>
+  </div>
+</section>
 
+<!-- ================= РАСХОДЫ НЕДЕЛИ ================= -->
+<section id="sec-expenses" class="sec" hidden>
   <div class="card">
     <h2>Куда уходит зарплата</h2>
     <div id="spend"></div>
     <div class="actions" style="margin-top:10px"><button id="payFromWeek">Отдать с этой зарплаты</button><button class="ghost" id="expFromWeek">+ Трата</button></div>
     <div id="payFromWeekForm"></div>
   </div>
-
-  <div class="card">
-    <div class="row"><h2>Смены</h2><button id="addShift">+ Смена</button></div>
-    <div id="shifts"></div>
-  </div>
-
   <div class="card">
     <div class="row"><h2>Авансы (взял)</h2><button id="addAdv">+ Аванс</button></div>
     <div class="muted" style="margin-bottom:8px">Аванс становится долгом начальнику точки. Гасится через «Отдать с этой зарплаты» → вычет из ЗП.</div>
     <div id="advances"></div>
   </div>
-</div>
+</section>
 
 <!-- ================= ДОЛГИ ================= -->
-<div id="debtsView" hidden>
+<section id="sec-debts" class="sec" hidden>
   <div class="card">
     <h2>Осталось отдать</h2>
     <div class="big" id="debtTotal"></div>
@@ -159,7 +207,19 @@
     <div class="muted" id="debtPaid"></div>
     <div id="forecast" style="margin-top:10px"></div>
   </div>
+  <div class="card">
+    <h2>Сроки</h2>
+    <div id="dueList"></div>
+  </div>
+  <div class="card">
+    <div class="row"><h2>Кому должен</h2><button id="addDebt">+ Долг</button></div>
+    <div id="addDebtForm"></div>
+    <div id="people" style="margin-top:8px"></div>
+  </div>
+</section>
 
+<!-- ================= ПЛАН ================= -->
+<section id="sec-plan" class="sec" hidden>
 <div id="planView">
   <div class="card">
     <div class="row"><h2>План на 12 недель</h2><button class="small" id="planAuto">Расписать автоматически</button></div>
@@ -183,29 +243,22 @@
     <div id="planSummary"></div>
   </div>
 </div>
+</section>
 
+<!-- ================= УВЕДОМЛЕНИЯ ================= -->
+<section id="sec-notifications" class="sec" hidden>
   <div class="card">
-    <h2>Сроки</h2>
-    <div id="dueList"></div>
+    <div class="row"><h2>Уведомления</h2><button class="ghost small" id="readAll">Прочитать всё</button></div>
+    <div id="notifList"></div>
   </div>
+</section>
 
-  <div class="card">
-    <div class="row"><h2>Кому должен</h2><button id="addDebt">+ Долг</button></div>
-    <div id="addDebtForm"></div>
-    <div id="people" style="margin-top:8px"></div>
-  </div>
-
-  <div class="card">
-    <h2>Настройки</h2>
-    <div class="grid">
-      <div><label>Курс ₽, ₸ за 1 ₽</label><input type="number" step="0.01" inputmode="decimal" id="rateRUB"></div>
-      <div><label>Курс $, ₸ за 1 $</label><input type="number" step="0.01" inputmode="decimal" id="rateUSD"></div>
-      <div><label>Еда и дорога в неделю, ₸</label><input type="number" inputmode="numeric" id="foodSet"></div>
-    </div>
-  </div>
+<!-- ================= НАСТРОЙКИ ================= -->
+<section id="sec-settings" class="sec" hidden>
+<div class="card">
+  <h2>Работа</h2>
+  <div id="workSettings"></div>
 </div>
-
-<!-- ================= ОБЩЕЕ ================= -->
 <div class="card">
   <h2>Вид</h2>
   <div class="grid">
@@ -216,7 +269,19 @@
   </div>
   <div class="muted" style="margin-top:6px">Настройки вида — для этого устройства.</div>
 </div>
-
+<div class="card">
+  <h2>Уведомления</h2>
+  <div id="notifSettings"></div>
+  <div class="muted" id="pushNote" style="margin-top:6px"></div>
+</div>
+  <div class="card">
+    <h2>Деньги</h2>
+    <div class="grid">
+      <div><label>Курс ₽, ₸ за 1 ₽</label><input type="number" step="0.01" inputmode="decimal" id="rateRUB"></div>
+      <div><label>Курс $, ₸ за 1 $</label><input type="number" step="0.01" inputmode="decimal" id="rateUSD"></div>
+      <div><label>Еда и дорога в неделю, ₸</label><input type="number" inputmode="numeric" id="foodSet"></div>
+    </div>
+  </div>
 <div class="card">
   <div class="row"><h2>Аккаунт</h2><span class="muted" id="syncStatus"></span></div>
   <div class="line"><span>Логин</span><b id="accLogin"></b></div>
@@ -233,7 +298,6 @@
   </div>
   <div id="passForm"></div>
 </div>
-
 <div class="card">
   <h2>Резервная копия</h2>
   <div class="muted" style="margin-bottom:8px">Сохранить все данные в файл или загрузить из файла.</div>
@@ -243,6 +307,8 @@
     <input type="file" id="importFile" accept=".json,application/json" hidden>
   </div>
 </div>
+</section>
+</main>
 </div><!-- appView -->
 
 <script>
@@ -267,10 +333,8 @@ applyView();
   sc.onchange = () => setView("scale", Number(sc.value));
 }
 
-const POINTS = ["БЦА", "ДАМУ", "АРУЖАН", "ЖИБЕК", "ТУРАН"];
-const PERCENT = 0.20;
-const MIN_SALES = 35000;
-const MIN_PAY = 7000;
+// Правила зарплаты и точки — у каждого аккаунта свои (Настройки → Работа)
+const DEFAULT_RULES = { percent: 20, minSales: 35000, minPay: 7000 };
 const KEEP_WEEKS = 5;          // текущая + 4 прошлые
 const DAYS = ["Вс","Пн","Вт","Ср","Чт","Пт","Сб"];
 const CUR = { KZT: "₸", RUB: "₽" };
@@ -304,6 +368,22 @@ function loadLocal() {
   if (!data.debts) data.debts = emptyDebts();
 }
 const D = () => data.debts;
+// настройки работы; для старых данных точки собираются из того, что уже внесено
+function SET() {
+  const d = D();
+  if (!d.settings) {
+    const pts = [];
+    const add = p => { if (p && !pts.includes(p)) pts.push(p); };
+    for (const p of d.people || []) (p.points || []).forEach(add);
+    for (const w of Object.values(data.weeks)) (w.shifts || []).forEach(x => add(x.point));
+    for (const i of d.items || []) add(i.point);
+    d.settings = { ...DEFAULT_RULES, points: pts };
+  }
+  return d.settings;
+}
+function points() { return SET().points; }
+// точки для показа: из настроек + удалённые, если по ним ещё есть данные
+function pointsWith(extra) { const out = points().slice(); for (const p of extra) if (p && !out.includes(p)) out.push(p); return out; }
 
 // Старые авансы из недель переносим в долги начальнику (+ вычет в той же неделе, как считалось раньше)
 function migrateAdvances() {
@@ -329,16 +409,17 @@ function store() {
   if (!auth) return;
   try { stash().setItem(dataKey(), JSON.stringify(data)); } catch (e) { alert("Не удалось сохранить данные"); }
 }
-function save() { W().updatedAt = Date.now(); prune(); store(); scheduleSync(); }       // изменилась неделя
-function saveDebts() { D().updatedAt = Date.now(); store(); scheduleSync(); if (typeof planDirty === "function") planDirty(); }           // изменились долги
+function save() { W().updatedAt = Date.now(); prune(); store(); scheduleSync(); if (typeof updateBadge === "function") updateBadge(); }       // изменилась неделя
+function saveDebts() { D().updatedAt = Date.now(); store(); scheduleSync(); if (typeof planDirty === "function") planDirty(); if (typeof updateBadge === "function") { updateBadge(); schedulePushLater(); } }           // изменились долги
 
 let week = mondayOf(today());
 function W() { return data.weeks[week] || (data.weeks[week] = { shifts: [] }); }
 
 // ---------- расчёт зарплаты ----------
 function shiftPay(s) {
-  if (s.sales === null || s.sales === "" || s.sales === undefined) return MIN_PAY; // продажи ещё не внесены
-  return Number(s.sales) < MIN_SALES ? MIN_PAY : Number(s.sales) * PERCENT;
+  const R = SET();
+  if (s.sales === null || s.sales === "" || s.sales === undefined) return R.minPay; // продажи ещё не внесены
+  return Number(s.sales) < R.minSales ? R.minPay : Number(s.sales) * R.percent / 100;
 }
 
 // ---------- расчёт долгов ----------
@@ -400,7 +481,7 @@ function select(options, val, onChange) {
   if (onChange) s.onchange = () => onChange(s.value);
   return s;
 }
-function pointSelect(val, onChange) { return select(POINTS.map(p => [p, p]), val, onChange); }
+function pointSelect(val, onChange) { return select(pointsWith([val]).map(p => [p, p]), val, onChange); }
 function numInput(val, placeholder, onChange) {
   const i = el("input", { type: "number", inputMode: "numeric", min: "0", placeholder });
   i.value = (val === null || val === undefined || val === 0) ? "" : val;
@@ -416,6 +497,7 @@ function dateInput(val, onChange, limitWeek) {
 function delBtn(question, action) { return el("button", { class: "del", textContent: "Удалить", onclick: () => { if (confirm(question)) action(); } }); }
 
 // ================= ЗАРПЛАТА =================
+const openShifts = new Set();
 function render() {
   const w = W();
   document.getElementById("weekTitle").textContent = dm(week) + " – " + dm(addDays(week,6));
@@ -428,10 +510,13 @@ function render() {
   if (!w.shifts.length) box.innerHTML = '<div class="muted">Смен нет</div>';
   for (const s of w.shifts) {
     const pay = el("div");
+    const head = el("span"), amt = el("b");
     const upd = () => {
       const noSales = s.sales === null || s.sales === undefined;
+      head.innerHTML = fmtDate(s.date) + " · " + s.point + " · " + (noSales ? "<span class='warn'>не внесено</span>" : n(s.sales));
+      amt.textContent = money(shiftPay(s));
       pay.innerHTML = "<b>" + money(shiftPay(s)) + "</b> <span class='muted'>" +
-        (noSales ? "минималка, продажи не внесены" : (s.sales < MIN_SALES ? "минималка" : "20%")) +
+        (noSales ? "минималка, продажи не внесены" : (s.sales < SET().minSales ? "минималка" : SET().percent + "%")) +
         (s.courier ? " · курьер +" + money(s.courier) : "") + "</span>";
       renderTotals();
     };
@@ -442,8 +527,12 @@ function render() {
       field("Курьер (платил сам), ₸", numInput(s.courier, "0", v => { s.courier = v || 0; save(); upd(); }))
     );
     g.style.marginTop = "8px";
-    box.append(el("div", { class: "item" },
-      el("div", { class: "row" }, pay, delBtn("Удалить смену?", () => { w.shifts = w.shifts.filter(x => x !== s); save(); render(); })), g));
+    const det = el("details", { class: "shift" });
+    if (openShifts.has(s.id)) det.open = true;
+    det.ontoggle = () => det.open ? openShifts.add(s.id) : openShifts.delete(s.id);
+    det.append(el("summary", {}, head, amt),
+      el("div", { style: "margin-top:8px" }, el("div", { class: "row" }, pay, delBtn("Удалить смену?", () => { w.shifts = w.shifts.filter(x => x !== s); save(); render(); })), g));
+    box.append(det);
     upd();
   }
 
@@ -486,7 +575,7 @@ function weekSummary(k) {
 function renderTotals() {
   const S = weekSummary(week);
   let rows = "";
-  for (const p of POINTS) if (S.by[p]) {
+  for (const p of pointsWith(Object.keys(S.by))) if (S.by[p]) {
     const r = S.by[p];
     rows += `<tr><td>${p}</td><td>${money(r.pay)}</td><td class="plus">${r.courier ? "+"+money(r.courier) : "—"}</td><td class="minus">${r.ded ? "−"+money(r.ded) : "—"}</td><td><b>${money(r.pay + r.courier - r.ded)}</b></td></tr>`;
   }
@@ -530,7 +619,7 @@ function buildReport() {
   const S = weekSummary(week), paid = allocate();
   const lines = ["Отчёт за " + dm(week) + " – " + dm(addDays(week,6))];
   const bossDone = new Set();
-  for (const p of POINTS) {
+  for (const p of pointsWith([...Object.keys(S.by), ...D().items.filter(i => i.advance && i.week === week).map(i => i.point)])) {
     const r = S.by[p];
     const advs = D().items.filter(i => i.advance && i.week === week && i.point === p);
     if (!r && !advs.length) continue;
@@ -571,21 +660,25 @@ document.getElementById("copyReport").onclick = async () => {
 // ---------- кнопки зарплаты ----------
 function lastPoint() {
   const all = Object.values(data.weeks).flatMap(w => w.shifts).sort((a,b) => b.date.localeCompare(a.date));
-  return all.length ? all[0].point : POINTS[0];
+  return all.length && points().includes(all[0].point) ? all[0].point : points()[0];
 }
 function defaultDate() {
   const t = today();
   return (t >= week && t <= addDays(week,6)) ? t : week;
 }
+function needPoints() { if (points().length) return false; alert("Сначала добавь точку: меню → Настройки → Работа"); showSection("settings"); return true; }
 document.getElementById("addShift").onclick = () => {
+  if (needPoints()) return;
   const w = W();
   let d = defaultDate();
   const used = new Set(w.shifts.map(s => s.date));
   if (used.has(d)) for (let i = 0; i < 7; i++) { const c = addDays(week, i); if (!used.has(c)) { d = c; break; } }
-  w.shifts.push({ id: uid(), date: d, point: lastPoint(), sales: null, courier: 0 });
+  const id = uid(); openShifts.add(id);
+  w.shifts.push({ id, date: d, point: lastPoint(), sales: null, courier: 0 });
   save(); render();
 };
 document.getElementById("addAdv").onclick = () => {
+  if (needPoints()) return;
   const point = lastPoint();
   D().items.push({ id: uid(), personId: ensureBoss(point).id, title: "Аванс", amount: 0, date: defaultDate(), due: "", week, point, advance: true });
   saveDebts(); render();
@@ -771,7 +864,7 @@ function debtForm(box, personId) {
     if (isNew) {
       g.append(field("Имя", el("input", { type: "text", value: st.name, oninput: e => st.name = e.target.value })));
       g.append(field("Валюта", select([["KZT", "Тенге ₸"], ["RUB", "Рубли ₽"]], st.currency, v => { st.currency = v; draw(); })));
-      const free = POINTS.filter(pt => !bossOf(pt));
+      const free = points().filter(pt => !bossOf(pt));
       if (free.length) g.append(el("div", { class: "full" }, el("label", { textContent: "Начальник точки (если это начальник)" }),
         ...free.map(pt => el("label", { class: "check" }, el("input", { type: "checkbox", checked: st.points.includes(pt),
           onchange: e => { st.points = e.target.checked ? [...st.points, pt] : st.points.filter(x => x !== pt); } }), pt))));
@@ -1086,20 +1179,207 @@ document.getElementById("planAuto").onclick = () => {
   saveDebts(); renderPlanTab(); renderDebts();
 };
 
-// ---------- вкладки ----------
-let tab = "salary";
-try { tab = localStorage.getItem("salary-tab") || "salary"; } catch (e) {}
-function showTab(t) {
-  tab = t;
-  try { localStorage.setItem("salary-tab", t); } catch (e) {}
-  document.getElementById("salaryView").hidden = t !== "salary";
-  document.getElementById("debtsView").hidden = t !== "debts";
-  document.getElementById("tabSalary").className = t === "salary" ? "on" : "";
-  document.getElementById("tabDebts").className = t === "debts" ? "on" : "";
+// ---------- разделы и меню ----------
+const SECTIONS = { salary: "Зарплата", expenses: "Расходы недели", debts: "Долги", plan: "План", notifications: "Уведомления", settings: "Настройки" };
+let section = "salary";
+try { section = localStorage.getItem("salary-section") || "salary"; } catch (e) {}
+if (!SECTIONS[section]) section = "salary";
+function showSection(name) {
+  section = name;
+  try { localStorage.setItem("salary-section", name); } catch (e) {}
+  for (const k of Object.keys(SECTIONS)) document.getElementById("sec-" + k).hidden = k !== name;
+  document.getElementById("weekBox").hidden = !(name === "salary" || name === "expenses");
+  document.getElementById("secTitle").textContent = SECTIONS[name];
+  document.querySelectorAll(".mi").forEach(b => b.classList.toggle("on", b.dataset.sec === name));
+  if (name === "notifications") renderNotifs();
+  if (name === "settings") renderSettings();
+  closeMenu(); window.scrollTo(0, 0);
+}
+function openMenu() { document.getElementById("drawer").classList.add("open"); document.getElementById("shade").hidden = false; }
+function closeMenu() { document.getElementById("drawer").classList.remove("open"); document.getElementById("shade").hidden = true; }
+document.getElementById("menuBtn").onclick = openMenu;
+document.getElementById("shade").onclick = closeMenu;
+document.getElementById("bellBtn").onclick = () => showSection("notifications");
+document.querySelectorAll(".mi").forEach(b => b.onclick = () => showSection(b.dataset.sec));
+// свайп влево закрывает меню
+{ let x0 = null; const dr = document.getElementById("drawer");
+  dr.addEventListener("touchstart", e => x0 = e.touches[0].clientX, { passive: true });
+  dr.addEventListener("touchend", e => { if (x0 !== null && x0 - e.changedTouches[0].clientX > 60) closeMenu(); x0 = null; }); }
+
+// ================= УВЕДОМЛЕНИЯ =================
+// Считаются из данных при каждом открытии; «прочитано» хранится на устройстве.
+const NOTIFY_DEFAULT = { push: false, debts: true, recur: true, report: true, sales: true, plan: true };
+function NOTIFY() { const d = D(); if (!d.notify) d.notify = { ...NOTIFY_DEFAULT }; return d.notify; }
+function readKey() { return "salary-notif-read:" + auth.login.toLowerCase(); }
+function readSet() { try { return new Set(JSON.parse(localStorage.getItem(readKey())) || []); } catch (e) { return new Set(); } }
+function saveRead(set) { try { localStorage.setItem(readKey(), JSON.stringify([...set].slice(-300))); } catch (e) {} }
+function daysTo(date) { return Math.round((parse(date) - parse(today())) / 864e5); }
+function computeNotifs() {
+  const d = D(), cfg = NOTIFY(), out = [], t = today();
+  const paid = allocate();
+  if (cfg.debts) for (const it of d.items) {
+    const p = person(it.personId); if (!p || !it.due) continue;
+    const left = it.amount - paid[it.id]; if (left <= 0) continue;
+    const dd = daysTo(it.due), what = p.name + (it.title !== "Долг" ? " · " + it.title : "") + " — " + money(left, p.currency);
+    if (dd < 0) out.push({ id: "due-" + it.id + "-late", level: "red", title: "Просрочен долг", text: what + ", срок был " + dm(it.due), sec: "debts", date: t });
+    else if (dd <= 3) out.push({ id: "due-" + it.id + "-" + it.due, level: "orange", title: dd === 0 ? "Срок долга сегодня" : dd === 1 ? "Срок долга завтра" : "Срок долга через " + dd + " дн.", text: what + " до " + dm(it.due), sec: "debts", date: t });
+  }
+  if (cfg.recur) for (const r of d.recurring || []) {
+    for (let i = 0; i <= 3; i++) {
+      const dt = addDays(t, i), x = parse(dt);
+      if (x.getDate() !== Math.min(r.day, daysInMonth(x.getFullYear(), x.getMonth()))) continue;
+      // уже отмечен в плане как оплаченный?
+      let P = mondayOf(dt); const pw = d.plan && d.plan.weeks[P];
+      if (pw && pw.recur && pw.recur[r.id] && pw.recur[r.id].done) break;
+      out.push({ id: "recur-" + r.id + "-" + dt, level: "orange", title: i === 0 ? r.title + " — сегодня" : i === 1 ? r.title + " — завтра" : r.title + " через " + i + " дн.", text: money(r.amount) + " до " + dm(dt), sec: "plan", date: t });
+      break;
+    }
+  }
+  const wk = mondayOf(t), dow = parse(t).getDay();
+  if (cfg.report && dow === 0) out.push({ id: "report-" + wk, level: "orange", title: "Сегодня отправить отчёт", text: "Воскресенье — скопируй отчёт за " + weekLabel(wk), sec: "salary", week: wk, date: t });
+  if (cfg.sales) for (const s of (data.weeks[wk] ? data.weeks[wk].shifts : [])) {
+    if ((s.sales === null || s.sales === undefined) && s.date < t)
+      out.push({ id: "sales-" + s.id, level: "orange", title: "Не внесены продажи", text: fmtDate(s.date) + " · " + s.point + " — посчитано по минималке, внеси до воскресенья", sec: "salary", week: wk, date: s.date });
+  }
+  if (cfg.plan && d.plan) {
+    const pw = d.plan.weeks[wk];
+    const open = pw ? (pw.lines || []).filter(l => !l.done).length : 0;
+    if (open) out.push({ id: "plan-" + wk + "-" + open, level: "blue", title: "План на неделю", text: dm(wk) + ": не отмечено выполненным — " + open, sec: "plan", date: t });
+  }
+  const rank = { red: 0, orange: 1, blue: 2 };
+  return out.sort((a, b) => rank[a.level] - rank[b.level]);
+}
+function updateBadge() {
+  if (!auth) return;
+  const read = readSet(), cnt = computeNotifs().filter(x => !read.has(x.id)).length;
+  for (const id of ["bellBadge", "menuBadge"]) { const b = document.getElementById(id); b.hidden = !cnt; b.textContent = cnt; }
+}
+function renderNotifs() {
+  const box = document.getElementById("notifList"); box.innerHTML = "";
+  const list = computeNotifs(), read = readSet();
+  if (!list.length) box.innerHTML = "<div class='muted'>Всё спокойно — уведомлений нет</div>";
+  for (const x of list) {
+    const isRead = read.has(x.id);
+    box.append(el("div", { class: "notif" + (isRead ? " read" : ""), onclick: () => {
+        const r = readSet(); r.add(x.id); saveRead(r); updateBadge();
+        if (x.week) week = x.week;
+        showSection(x.sec); if (x.sec === "salary") render();
+      } },
+      el("span", { class: "dot " + x.level }),
+      el("div", {}, el("b", { textContent: x.title }), el("div", { textContent: x.text }), el("div", { class: "muted", textContent: x.date === today() ? "сегодня" : dm(x.date) }))));
+  }
+}
+document.getElementById("readAll").onclick = () => { const r = readSet(); computeNotifs().forEach(x => r.add(x.id)); saveRead(r); renderNotifs(); updateBadge(); };
+
+// ---------- пуши на телефон (только в приложении APK/IPA) ----------
+// Приложение само ставит системные напоминания на ближайшие 3 недели; сервер для этого не нужен.
+// плагин берётся при первом обращении (NATIVE объявлен ниже по коду)
+let lnPlugin;
+function LNx() { if (lnPlugin === undefined) lnPlugin = NATIVE ? (Capacitor.registerPlugin ? Capacitor.registerPlugin("LocalNotifications") : Capacitor.Plugins.LocalNotifications) : null; return lnPlugin; }
+let pushTimer = null;
+function schedulePushLater() { if (!LNx()) return; clearTimeout(pushTimer); pushTimer = setTimeout(schedulePush, 1500); }
+function at(date, hh, mm) { const x = parse(date); x.setHours(hh, mm || 0, 0, 0); return x; }
+function pushEvents() {
+  const d = D(), cfg = NOTIFY(), out = [], now = new Date(), t = today(), paid = allocate();
+  const add = (when, title, body) => { if (when > now) out.push({ when, title, body }); };
+  if (cfg.debts) for (const it of d.items) {
+    const p = person(it.personId); if (!p || !it.due) continue;
+    const left = it.amount - paid[it.id]; if (left <= 0) continue;
+    const what = p.name + (it.title !== "Долг" ? " · " + it.title : "") + " — " + money(left, p.currency);
+    add(at(addDays(it.due, -3), 10), "Срок долга через 3 дня", what + " до " + dm(it.due));
+    add(at(it.due, 10), "Срок долга сегодня", what);
+  }
+  for (let i = 0; i < 21; i++) {
+    const dt = addDays(t, i), x = parse(dt);
+    if (cfg.recur) for (const r of d.recurring || []) {
+      if (x.getDate() !== Math.min(r.day, daysInMonth(x.getFullYear(), x.getMonth()))) continue;
+      add(at(addDays(dt, -3), 10), r.title + " через 3 дня", money(r.amount) + " до " + dm(dt));
+      add(at(dt, 10), r.title + " — сегодня", money(r.amount));
+    }
+    if (x.getDay() === 0) {
+      if (cfg.sales) add(at(dt, 12), "Проверь продажи", "Внеси продажи за неделю до конца дня");
+      if (cfg.report) add(at(dt, 18), "Отправь отчёт", "Воскресенье — скопируй отчёт за " + weekLabel(mondayOf(dt)));
+    }
+    if (x.getDay() === 1 && cfg.plan) add(at(dt, 11), "День выплаты", "Отметь в плане, что оплатил с этой ЗП");
+  }
+  return out.sort((a, b) => a.when - b.when).slice(0, 60); // у iOS ограничение — 64 запланированных
+}
+async function schedulePush() {
+  if (!LNx() || !auth) return;
+  try {
+    const pend = await LNx().getPending();
+    if (pend.notifications && pend.notifications.length) await LNx().cancel({ notifications: pend.notifications.map(x => ({ id: x.id })) });
+    if (!NOTIFY().push || auth.temp) return;
+    const perm = await LNx().checkPermissions();
+    if (perm.display !== "granted") return;
+    const ev = pushEvents();
+    if (ev.length) await LNx().schedule({ notifications: ev.map((e, i) => ({ id: 1000 + i, title: e.title, body: e.body, schedule: { at: e.when } })) });
+  } catch (e) { console.log("push", e); }
+}
+async function pushChanged() {
+  if (!LNx()) { if (NOTIFY().push) alert("Пуши работают только в приложении (APK / IPA). Здесь уведомления видны в разделе «Уведомления»."); return; }
+  if (NOTIFY().push) {
+    try {
+      let perm = await LNx().checkPermissions();
+      if (perm.display !== "granted") perm = await LNx().requestPermissions();
+      if (perm.display !== "granted") { alert("Разреши уведомления для приложения в настройках телефона"); NOTIFY().push = false; saveDebts(); renderSettings(); return; }
+    } catch (e) { alert("Не получилось включить пуши: " + (e.message || e)); return; }
+  }
+  schedulePush();
 }
 
-document.getElementById("tabSalary").onclick = () => showTab("salary");
-document.getElementById("tabDebts").onclick = () => showTab("debts");
+// ================= НАСТРОЙКИ =================
+function toggleRow(label, key) {
+  const cfg = NOTIFY();
+  return el("label", { class: "check", style: "justify-content:space-between" }, el("span", { textContent: label }),
+    el("input", { type: "checkbox", checked: !!cfg[key], onchange: e => { NOTIFY()[key] = e.target.checked; saveDebts(); updateBadge(); if (key === "push" && typeof pushChanged === "function") pushChanged(); } }));
+}
+function renderSettings() {
+  const ns = document.getElementById("notifSettings"); ns.innerHTML = "";
+  ns.append(toggleRow("Пуши на телефон", "push"), toggleRow("Сроки долгов", "debts"), toggleRow("Ежемесячные платежи", "recur"),
+    toggleRow("Отчёт в воскресенье", "report"), toggleRow("Невнесённые продажи", "sales"), toggleRow("План на неделю", "plan"));
+  document.getElementById("pushNote").textContent = NATIVE ? "" : "Пуши работают в приложении (APK / IPA).";
+  renderWorkSettings();
+}
+
+// Работа: правила зарплаты и точки
+function renderWorkSettings() {
+  const R = SET(), box = document.getElementById("workSettings"); box.innerHTML = "";
+  const num = (label, key) => field(label, numInput(R[key], "0", v => { R[key] = v || 0; saveDebts(); render(); }));
+  box.append(el("div", { class: "grid" }, num("Процент с продаж, %", "percent"), num("Минималка за смену, ₸", "minPay"),
+    el("div", { class: "full" }, num("Если продаж меньше, ₸ — платится минималка", "minSales"))));
+  box.append(el("h3", { textContent: "Точки" }));
+  if (!R.points.length) box.append(el("div", { class: "muted", textContent: "Добавь точки, на которых работаешь" }));
+  R.points.forEach((pt, i) => {
+    const boss = bossOf(pt);
+    const nameIn = el("input", { type: "text", value: pt });
+    nameIn.onchange = () => renamePoint(pt, nameIn.value.trim());
+    const bossSel = select([["", "— нет —"], ...D().people.map(x => [x.id, x.name])], boss ? boss.id : "", v => setBoss(pt, v));
+    box.append(el("div", { class: "item" }, el("div", { class: "grid" }, field("Название", nameIn), field("Начальник (кто платит)", bossSel)),
+      el("div", { style: "text-align:right" }, delBtn("Удалить точку «" + pt + "»? Внесённые смены останутся.", () => { R.points.splice(i, 1); saveDebts(); renderWorkSettings(); render(); }))));
+  });
+  box.append(el("div", { class: "actions", style: "margin-top:8px" }, el("button", { class: "ghost small", textContent: "+ Точка", onclick: () => {
+    const name = prompt("Название точки"); if (!name || !name.trim()) return;
+    if (R.points.includes(name.trim())) { alert("Такая точка уже есть"); return; }
+    R.points.push(name.trim()); saveDebts(); renderWorkSettings(); render(); } })));
+  box.append(el("div", { class: "muted", style: "margin-top:6px", textContent: "Начальник нужен для авансов и вычетов. Человека можно добавить в «Долги» → «+ Долг»." }));
+}
+function renamePoint(from, to) {
+  const R = SET();
+  if (!to || to === from) { renderWorkSettings(); return; }
+  if (R.points.includes(to)) { alert("Такая точка уже есть"); renderWorkSettings(); return; }
+  R.points[R.points.indexOf(from)] = to;
+  for (const w of Object.values(data.weeks)) for (const sh of w.shifts || []) if (sh.point === from) { sh.point = to; w.updatedAt = Date.now(); }
+  for (const p of D().people) if (p.points) p.points = p.points.map(x => x === from ? to : x);
+  for (const it of D().items) if (it.point === from) it.point = to;
+  for (const x of D().payments) if (x.point === from) x.point = to;
+  store(); saveDebts(); renderWorkSettings(); render();
+}
+function setBoss(pt, personId) {
+  for (const p of D().people) if (p.points) p.points = p.points.filter(x => x !== pt);
+  if (personId) { const p = person(personId); p.points = [...(p.points || []), pt]; }
+  saveDebts(); renderDebts();
+}
 
 // ---------- резервная копия ----------
 document.getElementById("export").onclick = () => {
@@ -1129,7 +1409,7 @@ const Bio = NATIVE ? (Capacitor.registerPlugin ? Capacitor.registerPlugin("Nativ
 
 // ---------- синхронизация ----------
 let syncTimer = null, syncing = false, syncAgain = false;
-function setStatus(t) { document.getElementById("syncStatus").textContent = t; }
+function setStatus(t) { document.getElementById("syncStatus").textContent = t; document.getElementById("drawerSync").textContent = t; }
 function scheduleSync() { if (!auth) return; clearTimeout(syncTimer); syncTimer = setTimeout(doSync, 800); }
 
 // По каждой неделе и по блоку долгов берём ту версию, что изменена позже
@@ -1180,7 +1460,7 @@ async function doSync() {
       if (r.status !== 409) throw new Error("http");
       server = r.json; // конфликт — сливаем ещё раз
     }
-    if (changed) { render(); renderDebts(); } // перерисовываем, только если пришли изменения с другого устройства
+    if (changed) { render(); renderDebts(); updateBadge(); schedulePushLater(); if (section === "settings") renderSettings(); } // перерисовываем, только если пришли изменения с другого устройства
     setStatus("✓ " + new Date().toLocaleTimeString("ru-RU", { hour: "2-digit", minute: "2-digit" }));
   } catch (e) {
     if (e.message === "auth") { syncing = false; alert("Сессия закончилась, войди заново"); logout(true); return; }
@@ -1195,6 +1475,7 @@ window.addEventListener("online", doSync);
 // ---------- экраны ----------
 function showView(v) {
   for (const id of ["authView", "lockView", "appView"]) document.getElementById(id).hidden = id !== v;
+  document.body.classList.toggle("app", v === "appView");
 }
 
 // ---------- вход и регистрация ----------
@@ -1250,6 +1531,7 @@ function adoptLegacyLocal() {
   } catch (e) {}
 }
 async function logout(skipServer) {
+  if (LNx()) { try { const pend = await LNx().getPending(); if (pend.notifications.length) await LNx().cancel({ notifications: pend.notifications.map(x => ({ id: x.id })) }); } catch (e) {} }
   if (auth && !skipServer) { try { await request("POST", "api/logout"); } catch (e) {} }
   if (auth) { try { stash().removeItem(dataKey()); localStorage.removeItem(lockKey()); } catch (e) {} }
   try { localStorage.removeItem(AUTH_KEY); sessionStorage.removeItem(AUTH_KEY); } catch (e) {}
@@ -1381,6 +1663,7 @@ document.getElementById("lockFace").onclick = () => faceUnlock(false);
 
 function renderAccount() {
   if (!auth) return;
+  document.getElementById("drawerLogin").textContent = auth.login;
   document.getElementById("accLogin").textContent = auth.login + (auth.temp ? " (чужое устройство)" : "");
   document.getElementById("accSecurity").hidden = auth.temp;
   const c = lockCfg(), pinOn = !!c.hash, faceOn = !!c.cred;
@@ -1415,7 +1698,8 @@ function openApp(unlocked) {
   showView("appView");
   { const before = JSON.stringify(data.debts); migrateAdvances(); if (JSON.stringify(data.debts) !== before && data.debts.updatedAt) data.debts.updatedAt = Date.now(); }
   prune(); store();
-  showTab(tab); render(); renderDebts(); renderAccount(); doSync();
+  document.body.classList.add("app");
+  showSection(section); render(); renderDebts(); renderAccount(); updateBadge(); doSync(); schedulePushLater();
 }
 try { auth = JSON.parse(sessionStorage.getItem(AUTH_KEY) || localStorage.getItem(AUTH_KEY) || "null"); } catch (e) { auth = null; }
 if (auth && auth.token) { loadLocal(); openApp(); } else { auth = null; setAuthMode("login"); showView("authView"); }
