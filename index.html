@@ -84,6 +84,7 @@
          padding:calc(8px + env(safe-area-inset-top)) 12px 8px; }
   .top h1 { font-size:18px; margin:0; flex:1; }
   .iconbtn { background:transparent; color:var(--text); font-size:22px; width:42px; height:42px; padding:0; position:relative; border-radius:10px; }
+  .badge[hidden], .cnt[hidden] { display:none !important; }
   .badge { position:absolute; top:2px; right:0; background:var(--red); color:#fff; font-size:11px; font-weight:700; border-radius:9px; min-width:18px; height:18px;
            display:flex; align-items:center; justify-content:center; padding:0 4px; }
   .shade { position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:30; }
@@ -205,7 +206,10 @@
     <div class="muted" id="debtTotalAlt"></div>
     <div class="bar"><div id="debtBar"></div></div>
     <div class="muted" id="debtPaid"></div>
-    <div id="forecast" style="margin-top:10px"></div>
+    <div class="grid" style="margin-top:10px">
+      <div><label>Буду отдавать в неделю, ₸</label><input type="number" inputmode="numeric" id="fcWeekly" placeholder="пусто — по темпу"></div>
+    </div>
+    <div id="forecast" style="margin-top:8px"></div>
   </div>
   <div class="card">
     <h2>Сроки</h2>
@@ -223,6 +227,7 @@
 <div id="planView">
   <div class="card">
     <div class="row"><h2>План на 12 недель</h2><button class="small" id="planAuto">Расписать автоматически</button></div>
+    <details id="prioBox" style="padding:6px 0 10px"><summary><span>Приоритеты долгов для автоплана</span><span class="muted" id="prioCount"></span></summary><div id="prioList" style="margin-top:8px"></div></details>
     <div class="grid">
       <div><label>Средняя ЗП в неделю, ₸</label><input type="number" inputmode="numeric" id="planAvg" placeholder="например 108100"></div>
       <div><label>Еда и дорога в неделю</label><div id="planFood" style="padding-top:10px; font-weight:600"></div></div>
@@ -432,6 +437,13 @@ function ensureBoss(point) {
   return b;
 }
 function toKZT(amount, cur) { return cur === "RUB" ? amount * D().rates.RUB : amount; }
+const PRIORITY = { high: ["Срочно", 0], normal: ["Обычно", 1], low: ["Потом", 2] };
+function prioRank(i) { return (PRIORITY[i.priority] || PRIORITY.normal)[1]; }
+// порядок для автоплана: сначала приоритет, потом срок
+function planOrder(a, b) { return prioRank(a) - prioRank(b) || itemOrder(a, b); }
+function prioSelect(it, after) {
+  return select(Object.entries(PRIORITY).map(([k, v]) => [k, v[0]]), it.priority || "normal", v => { it.priority = v; saveDebts(); if (after) after(); });
+}
 function itemOrder(a, b) { return (a.due || "9999").localeCompare(b.due || "9999") || a.date.localeCompare(b.date); }
 
 // Сколько погашено по каждому долгу: сначала платежи на конкретный долг, остальные — по порядку сроков
@@ -766,13 +778,17 @@ function renderDebts() {
   const span = Math.min(4, Math.max(1, Math.ceil((parse(today()) - parse(first)) / 864e5 / 7)));
   const perWeek = last4 / span;
   const fc = document.getElementById("forecast");
-  if (leftKZT <= 0) fc.innerHTML = "<b class='done'>Долгов нет ✓</b>";
-  else if (perWeek <= 0) fc.innerHTML = "<span class='muted'>Прогноз появится после первых платежей.</span>";
+  const fw = document.getElementById("fcWeekly");
+  if (document.activeElement !== fw) fw.value = d.forecastWeekly || "";
+  const closeBy = per => { const w = Math.ceil(leftKZT / per), dt = addDays(today(), w * 7); return "<b>" + dm(dt) + "." + parse(dt).getFullYear() + "</b> (≈ " + w + " нед.)"; };
+  const parts = [];
+  if (leftKZT <= 0) parts.push("<b class='done'>Долгов нет ✓</b>");
   else {
-    const weeks = Math.ceil(leftKZT / perWeek);
-    fc.innerHTML = "Темп: ≈ " + money(perWeek) + " в неделю (по последним платежам).<br>Прогноз: всё закроешь к <b>" +
-      dm(addDays(today(), weeks * 7)) + "." + parse(addDays(today(), weeks * 7)).getFullYear() + "</b> (≈ " + weeks + " нед.)";
+    if (d.forecastWeekly > 0) parts.push("При " + money(d.forecastWeekly) + " в неделю закроешь к " + closeBy(d.forecastWeekly));
+    if (perWeek > 0) parts.push("<span class='muted'>По темпу последних платежей (≈ " + money(perWeek) + " в неделю) — к " + closeBy(perWeek) + "</span>");
+    else if (!d.forecastWeekly) parts.push("<span class='muted'>Введи сумму выше или сделай первые платежи — появится прогноз.</span>");
   }
+  fc.innerHTML = parts.join("<br>");
 
 
   renderPlanTab();
@@ -808,7 +824,8 @@ function renderDebts() {
         field("Что", el("input", { type: "text", value: it.title, oninput: e => { it.title = e.target.value || "Долг"; saveDebts(); }, onchange: () => renderDebts() })),
         field("Сумма, " + CUR[p.currency], numInput(it.amount, "0", null)),
         field("Взял", dateInput(it.date, v => { if (v) { it.date = v; saveDebts(); } })),
-        field("Срок", dateInput(it.due, v => { it.due = v; saveDebts(); renderDebts(); })));
+        field("Срок", dateInput(it.due, v => { it.due = v; saveDebts(); renderDebts(); })),
+        field("Приоритет", prioSelect(it, () => renderDebts())));
       const amt = g.querySelectorAll("input")[1];
       // сохраняем сразу при вводе, перерисовываем список — когда поле отпущено
       amt.oninput = () => { it.amount = Number(amt.value) || 0; saveDebts(); render(); };
@@ -965,6 +982,20 @@ function renderPlanTab() {
   const avg = document.getElementById("planAvg");
   if (document.activeElement !== avg) avg.value = d.planSalary || "";
   document.getElementById("planFood").textContent = money(d.food || 0);
+
+  // приоритеты открытых долгов
+  const pl = document.getElementById("prioList"); pl.innerHTML = "";
+  const paidNow = allocate();
+  const openItems = d.items.filter(i => person(i.personId) && i.amount - paidNow[i.id] > 0).sort(planOrder);
+  document.getElementById("prioCount").textContent = openItems.filter(i => i.priority === "high").length ? "срочных: " + openItems.filter(i => i.priority === "high").length : "";
+  if (!openItems.length) pl.innerHTML = "<div class='muted'>Открытых долгов нет</div>";
+  for (const it of openItems) {
+    const p = person(it.personId);
+    const sel = prioSelect(it, () => renderPlanTab()); sel.style.width = "auto";
+    pl.append(el("div", { class: "line", style: "align-items:center" },
+      el("span", { html: "<b>" + p.name + "</b>" + (it.title !== "Долг" ? " <span class='muted'>" + it.title + "</span>" : "") +
+        "<br><span class='muted'>" + money(it.amount - paidNow[it.id], p.currency) + (it.due ? " · до " + dm(it.due) : "") + "</span>" }), sel));
+  }
 
   // ежемесячные
   const rl = document.getElementById("recurList"); rl.innerHTML = "";
@@ -1152,18 +1183,23 @@ function planLineForm(box, P) {
 document.getElementById("addRecur").onclick = () => {
   PL(); D().recurring.push({ id: uid(), title: "Новый платёж", amount: 0, day: 1 }); saveDebts(); renderPlanTab();
 };
+document.getElementById("fcWeekly").oninput = e => { D().forecastWeekly = Math.max(0, +e.target.value || 0); saveDebts(); renderDebts(); };
 document.getElementById("planAvg").oninput = e => { D().planSalary = Math.max(0, +e.target.value || 0); saveDebts(); renderPlanSums(); };
 // «Расписать автоматически»: свободные деньги каждой недели — на долги по порядку сроков
 document.getElementById("planAuto").onclick = () => {
   const d = D();
   if (!d.planSalary) { alert("Сначала введи среднюю ЗП"); return; }
-  if (!confirm("Добавить в план платежи по оставшимся долгам? Уже добавленные строки останутся.")) return;
+  if (!confirm("Расписать долги по неделям? Прошлое автоматическое распределение заменится, строки, добавленные вручную и выполненные, останутся.")) return;
+  // убираем прошлые автоматические строки, которые ещё не выполнены
+  for (const P of paydays()) { const w = PL().weeks[P]; if (w && w.lines) w.lines = w.lines.filter(l => !l.auto || l.done); }
   const plan = computePlan(), rem = plan.rem;
-  const queue = d.items.filter(i => person(i.personId) && rem[i.id] > 0).sort(itemOrder);
+  const queue = d.items.filter(i => person(i.personId) && rem[i.id] > 0).sort(planOrder);
+  // нельзя тратить так, чтобы какая-то следующая неделя ушла в минус: берём минимум остатков от этой недели и дальше
+  const minAhead = []; let m = Infinity;
+  for (let i = plan.weeks.length - 1; i >= 0; i--) { m = Math.min(m, plan.weeks[i].left); minAhead[i] = m; }
   let carry = 0;
-  for (const W of plan.weeks) {
-    // свободно = накопленный остаток этой недели минус то, что уже распределили в прошлых неделях
-    let free = Math.max(0, W.left - carry);
+  plan.weeks.forEach((W, wi) => {
+    let free = Math.max(0, minAhead[wi] - carry);
     for (const it of queue) {
       if (free <= 0) break;
       if (rem[it.id] <= 0) continue;
@@ -1172,10 +1208,10 @@ document.getElementById("planAuto").onclick = () => {
       const payKZT = Math.min(free, needKZT);
       const amount = rub ? (payKZT === needKZT ? rem[it.id] : Math.floor(payKZT / d.rates.RUB)) : payKZT;
       if (amount <= 0) continue;
-      planWeekEdit(W.P).lines.push({ id: uid(), personId: p.id, itemId: it.id, amount, kzt: rub ? Math.round(amount * d.rates.RUB) : amount, done: false });
+      planWeekEdit(W.P).lines.push({ id: uid(), personId: p.id, itemId: it.id, amount, kzt: rub ? Math.round(amount * d.rates.RUB) : amount, done: false, auto: true });
       rem[it.id] -= amount; free -= payKZT; carry += payKZT;
     }
-  }
+  });
   saveDebts(); renderPlanTab(); renderDebts();
 };
 
